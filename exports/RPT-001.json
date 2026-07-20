@@ -1,0 +1,47 @@
+{
+    "report_id": "RPT-001",
+    "generated_at": "2026-07-15T12:48:54.966764+00:00",
+    "status": "completed",
+    "rows": 9,
+    "execution_time_ms": 0.1,
+    "metadata": {
+        "business_id": "BUS-001",
+        "report_type": "analytics",
+        "period": "month",
+        "format": "json",
+        "generated_by": "System",
+        "builder_version": "1.0"
+    },
+    "data": {
+        "summary": {
+            "revenue": 850000,
+            "appointments": 148,
+            "customers": 61,
+            "conversion_rate": 41.2
+        },
+        "monthly_sales": [
+            {
+                "month": "January",
+                "revenue": 245000
+            },
+            {
+                "month": "February",
+                "revenue": 286000
+            },
+            {
+                "month": "March",
+                "revenue": 319000
+            }
+        ],
+        "top_services": [
+            {
+                "service": "Dental Cleaning",
+                "count": 82
+            },
+            {
+                "service": "Teeth Whitening",
+                "count": 47
+            }
+        ]
+    }
+}
