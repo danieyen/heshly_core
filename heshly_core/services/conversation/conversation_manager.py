@@ -32,13 +32,20 @@ class ConversationManager:
         cache=None,
         lifecycle=None,
         recovery=None,
-        tenant_id: str = "default",
+        tenant_id: str | None = None,
         channel: str = "whatsapp",
     ):
-        self.store = store or ConversationStore(
-            tenant_id=tenant_id,
-            channel=channel,
-        )
+        # Tenant must be explicit or resolved via TenantContext inside store.
+        # Do not default to "default" - that breaks tenant isolation.
+        if tenant_id is not None:
+            self.store = store or ConversationStore(
+                tenant_id=tenant_id,
+                channel=channel,
+            )
+        else:
+            self.store = store or ConversationStore(
+                channel=channel,
+            )
 
         self.cache = cache
         self.lifecycle = lifecycle
@@ -54,6 +61,11 @@ class ConversationManager:
         conversation_id: str,
         customer_id: str,
     ) -> Conversation:
+
+        if not conversation_id:
+            raise ValueError("conversation_id is required")
+        if not customer_id:
+            raise ValueError("customer_id is required")
 
         conversation = Conversation(
             conversation_id=conversation_id,
@@ -78,6 +90,9 @@ class ConversationManager:
         message: str,
     ) -> None:
 
+        if not message:
+            raise ValueError("message is required")
+
         conversation.add_turn(
             ConversationTurn(
                 role=Speaker.USER,
@@ -94,6 +109,9 @@ class ConversationManager:
         message: str,
     ) -> None:
 
+        if not message:
+            raise ValueError("message is required")
+
         conversation.add_turn(
             ConversationTurn(
                 role=Speaker.ASSISTANT,
@@ -109,6 +127,9 @@ class ConversationManager:
         conversation: Conversation,
         message: str,
     ) -> None:
+
+        if not message:
+            raise ValueError("message is required")
 
         conversation.add_turn(
             ConversationTurn(
@@ -131,6 +152,8 @@ class ConversationManager:
         status: ConversationStatus,
     ) -> None:
 
+        if not isinstance(status, ConversationStatus):
+            raise ValueError(f"status must be ConversationStatus, got {status}")
         conversation.status = status
         conversation.updated_at = datetime.now(UTC)
 
@@ -181,6 +204,8 @@ class ConversationManager:
         conversation_id: str,
     ) -> Conversation | None:
 
+        if not conversation_id:
+            raise ValueError("conversation_id is required")
 
         # 1. Check cache
 
@@ -244,6 +269,8 @@ class ConversationManager:
         conversation_id: str,
     ) -> None:
 
+        if not conversation_id:
+            raise ValueError("conversation_id is required")
 
         if self.cache:
 
@@ -267,6 +294,8 @@ class ConversationManager:
         conversation_id: str,
     ) -> Conversation | None:
 
+        if not conversation_id:
+            raise ValueError("conversation_id is required")
 
         if not self.recovery:
             return self.get(conversation_id)

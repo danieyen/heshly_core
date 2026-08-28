@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 
 
@@ -53,6 +53,10 @@ class WhatsAppContact:
 
     whatsapp_id: str | None = None
 
+    def __post_init__(self):
+        if not self.phone_number:
+            raise ValueError("phone_number is required")
+
 
 @dataclass(slots=True)
 class WhatsAppMedia:
@@ -96,12 +100,15 @@ class WhatsAppMessage:
     )
 
     timestamp: datetime = field(
-        default_factory=datetime.utcnow
+        default_factory=lambda: datetime.now(UTC)
     )
 
     metadata: dict[str, str] = field(
         default_factory=dict
     )
+
+    def is_inbound(self) -> bool:
+        return self.direction == WhatsAppDirection.INBOUND
 
 
 @dataclass(slots=True)
@@ -115,7 +122,7 @@ class WhatsAppWebhookEvent:
     message: WhatsAppMessage
 
     received_at: datetime = field(
-        default_factory=datetime.utcnow
+        default_factory=lambda: datetime.now(UTC)
     )
 
 
@@ -146,6 +153,24 @@ class WhatsAppConfiguration:
     webhook_enabled: bool = True
     business_name: str = ""
 
+    def validate(self) -> list[str]:
+        errors = []
+        if not self.tenant_id:
+            errors.append("tenant_id is required")
+        if not self.phone_number_id:
+            errors.append("phone_number_id is required")
+        if not self.access_token:
+            errors.append("access_token is required")
+        if not self.verify_token:
+            errors.append("verify_token is required")
+        if not self.app_secret:
+            errors.append("app_secret is required")
+        return errors
+
+    @property
+    def is_valid(self) -> bool:
+        return len(self.validate()) == 0
+
 
 @dataclass(slots=True)
 class WhatsAppConfigurationValidation:
@@ -158,3 +183,7 @@ class WhatsAppConfigurationValidation:
     errors: list[str] = field(
         default_factory=list
     )
+
+    @property
+    def is_valid(self) -> bool:
+        return bool(self.valid) and not self.errors

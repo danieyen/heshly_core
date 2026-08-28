@@ -21,7 +21,7 @@ class BaseRepository(Generic[T]):
     TenantContext contains the canonical tenant_id.
 
     business_id and tenant_id are deliberately
-    different concepts.
+    different concepts. All queries must be tenant-filtered.
     """
 
     def __init__(self):
@@ -49,6 +49,11 @@ class BaseRepository(Generic[T]):
 
         if tenant_id is None:
             tenant_id = self.current_tenant()
+
+        if not tenant_id or not str(tenant_id).strip():
+            raise ValueError("tenant_id is required")
+
+        tenant_id = str(tenant_id).strip()
 
         self.permission.require_tenant(
             tenant_id
@@ -81,6 +86,16 @@ class BaseRepository(Generic[T]):
     ) -> dict:
 
         result = dict(filters or {})
+
+        # Do not allow caller to override tenant_id
+        if "tenant_id" in result:
+            # Ensure it matches current tenant
+            requested = str(result["tenant_id"]).strip()
+            required = self.require_tenant()
+            if requested != required:
+                raise PermissionError(
+                    f"Cross-tenant access denied: requested {requested} != current {required}"
+                )
 
         result.update(
             self.tenant_filter()

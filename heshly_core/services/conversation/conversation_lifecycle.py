@@ -1,63 +1,61 @@
-from datetime import datetime
+from datetime import datetime, UTC
 
-from heshly_core.models.conversation import Conversation
+from heshly_core.models.conversation import Conversation, ConversationStatus
 
 
 class ConversationLifecycle:
     """
     Manages conversation state transitions.
+    Uses ConversationStatus enum to guarantee contract with
+    ConversationManager, persistence, and n8n routing.
     """
 
     def start(self, conversation: Conversation) -> Conversation:
         """
         Start a new conversation.
         """
-
-        conversation.status = "active"
-        conversation.updated_at = datetime.utcnow()
-
+        if conversation is None:
+            raise ValueError("conversation is required")
+        conversation.status = ConversationStatus.ACTIVE
+        conversation.updated_at = datetime.now(UTC)
         return conversation
-
 
     def wait(self, conversation: Conversation) -> Conversation:
         """
-        Put conversation into waiting state.
+        Put conversation into waiting state (awaiting customer input).
         """
-
-        conversation.status = "waiting"
-        conversation.updated_at = datetime.utcnow()
-
+        if conversation is None:
+            raise ValueError("conversation is required")
+        conversation.status = ConversationStatus.WAITING
+        conversation.updated_at = datetime.now(UTC)
         return conversation
-
 
     def complete(self, conversation: Conversation) -> Conversation:
         """
         Mark conversation as completed.
         """
-
-        conversation.status = "completed"
-        conversation.updated_at = datetime.utcnow()
-
+        if conversation is None:
+            raise ValueError("conversation is required")
+        conversation.status = ConversationStatus.COMPLETED
+        conversation.updated_at = datetime.now(UTC)
         return conversation
-
 
     def escalate(self, conversation: Conversation) -> Conversation:
         """
-        Transfer conversation to human.
+        Transfer conversation to human (handover).
         """
-
-        conversation.status = "escalated"
-        conversation.updated_at = datetime.utcnow()
-
+        if conversation is None:
+            raise ValueError("conversation is required")
+        conversation.status = ConversationStatus.HANDOVER
+        conversation.updated_at = datetime.now(UTC)
         return conversation
-
 
     def close(self, conversation: Conversation) -> Conversation:
         """
         Permanently close conversation.
         """
-
-        conversation.status = "closed"
-        conversation.updated_at = datetime.utcnow()
-
+        if conversation is None:
+            raise ValueError("conversation is required")
+        conversation.status = ConversationStatus.CLOSED
+        conversation.updated_at = datetime.now(UTC)
         return conversation

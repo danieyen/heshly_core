@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, time
+from datetime import date, datetime, time, UTC
 from enum import Enum
 
 
@@ -38,6 +38,10 @@ class AppointmentStatus(str, Enum):
 
     RESCHEDULED = "rescheduled"
 
+    @property
+    def is_blocking(self) -> bool:
+        return self not in (AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW)
+
 
 @dataclass(slots=True)
 class TimeSlot:
@@ -50,6 +54,13 @@ class TimeSlot:
     end: datetime
 
     available: bool = True
+
+    def to_dict(self) -> dict:
+        return {
+            "start": self.start.isoformat(),
+            "end": self.end.isoformat(),
+            "available": self.available,
+        }
 
 
 @dataclass(slots=True)
@@ -65,6 +76,9 @@ class BusinessHours:
     closes_at: time
 
     enabled: bool = True
+
+    def is_valid(self) -> bool:
+        return self.opens_at < self.closes_at
 
 
 @dataclass(slots=True)
@@ -90,6 +104,9 @@ class CalendarEvent:
     status: AppointmentStatus = (
         AppointmentStatus.CONFIRMED
     )
+
+    def is_blocking(self) -> bool:
+        return self.status.is_blocking
 
 
 @dataclass(slots=True)
@@ -123,11 +140,25 @@ class AvailabilityRequest:
 
     duration_minutes: int
 
+    preferred_staff: str | None = None
+
+    def validate(self) -> list[str]:
+        errors = []
+        if not self.service:
+            errors.append("service is required")
+        if not self.preferred_date:
+            errors.append("preferred_date is required")
+        if self.duration_minutes <= 0:
+            errors.append("duration_minutes must be > 0")
+        return errors
+
 
 @dataclass(slots=True)
 class AvailabilityResult:
     """
     Available appointment slots.
+    Contract used by n8n: { available: bool, slots: [...] }
+    Must return object, not JSON string.
     """
 
     available: bool
@@ -135,6 +166,15 @@ class AvailabilityResult:
     slots: list[TimeSlot] = field(
         default_factory=list
     )
+
+    reason: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "available": bool(self.available),
+            "slots": [s.to_dict() for s in self.slots],
+            "reason": self.reason,
+        }
 
 
 @dataclass(slots=True)
@@ -156,11 +196,27 @@ class AppointmentRequest:
 
     notes: str | None = None
 
+    def validate(self) -> list[str]:
+        errors = []
+        if not self.customer_name:
+            errors.append("customer_name is required")
+        if not self.customer_phone:
+            errors.append("customer_phone is required")
+        if not self.service:
+            errors.append("service is required")
+        if not self.start:
+            errors.append("start is required")
+        if self.duration_minutes <= 0:
+            errors.append("duration_minutes must be > 0")
+        return errors
+
 
 @dataclass(slots=True)
 class AppointmentResult:
     """
     Appointment operation result.
+    Contract used by n8n booking response: { success: bool, appointment_id, status, message }
+    success must be boolean, not string.
     """
 
     success: bool
@@ -170,3 +226,11 @@ class AppointmentResult:
     status: AppointmentStatus | None = None
 
     message: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "success": bool(self.success),
+            "appointment_id": self.appointment_id,
+            "status": self.status.value if isinstance(self.status, Enum) else self.status,
+            "message": self.message,
+        }

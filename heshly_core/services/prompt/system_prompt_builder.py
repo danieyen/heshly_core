@@ -1,6 +1,7 @@
 class SystemPromptBuilder:
     """
     Builds the permanent system prompt for the AI.
+    Contract must be deterministic for n8n AI receptionist node.
     """
 
     def build(
@@ -8,6 +9,14 @@ class SystemPromptBuilder:
         business_name: str,
         business_type: str,
     ) -> str:
+
+        if not business_name or not business_name.strip():
+            raise ValueError("business_name is required")
+        if not business_type or not business_type.strip():
+            raise ValueError("business_type is required")
+
+        business_name = business_name.strip()
+        business_type = business_type.strip()
 
         lines = [
 
@@ -43,6 +52,24 @@ class SystemPromptBuilder:
 
             "- Maintain a friendly conversational tone.",
 
+            "- Always return a valid Action (ask_service, ask_date, ask_time, present_options, create_appointment, escalate_human, answer_question).",
+
+            "- When booking, ensure service, date, and time are collected before calling availability.",
+
         ]
 
         return "\n".join(lines)
+
+    def build_with_context(
+        self,
+        business_name: str,
+        business_type: str,
+        tenant_id: str | None = None,
+        language: str = "en",
+    ) -> str:
+        base = self.build(business_name, business_type)
+        if tenant_id:
+            base += f"\n\nTenant: {tenant_id}"
+        if language and language != "en":
+            base += f"\nRespond in {language}."
+        return base

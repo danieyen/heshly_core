@@ -15,6 +15,7 @@ class TenantAPI:
 
     Provides tenant operations
     through a service interface.
+    All operations enforce tenant isolation via TenantContext.
     """
 
     def __init__(self):
@@ -31,6 +32,9 @@ class TenantAPI:
         tenant: Tenant,
     ) -> Tenant:
 
+        if tenant is None:
+            raise ValueError("tenant is required")
+
         return self.service.register(
             tenant
         )
@@ -45,8 +49,11 @@ class TenantAPI:
         tenant_id: str,
     ) -> Tenant | None:
 
+        if not tenant_id or not str(tenant_id).strip():
+            raise ValueError("tenant_id is required")
+
         return self.service.get(
-            tenant_id
+            str(tenant_id).strip()
         )
 
 
@@ -68,8 +75,11 @@ class TenantAPI:
         tenant_id: str,
     ) -> bool:
 
+        if not tenant_id or not str(tenant_id).strip():
+            raise ValueError("tenant_id is required")
+
         return self.service.suspend(
-            tenant_id
+            str(tenant_id).strip()
         )
 
 
@@ -82,8 +92,11 @@ class TenantAPI:
         tenant_id: str,
     ) -> bool:
 
+        if not tenant_id or not str(tenant_id).strip():
+            raise ValueError("tenant_id is required")
+
         return self.service.activate(
-            tenant_id
+            str(tenant_id).strip()
         )
 
 
@@ -96,8 +109,11 @@ class TenantAPI:
         tenant_id: str,
     ) -> bool:
 
+        if not tenant_id or not str(tenant_id).strip():
+            raise ValueError("tenant_id is required")
+
         return self.service.remove(
-            tenant_id
+            str(tenant_id).strip()
         )
 
 

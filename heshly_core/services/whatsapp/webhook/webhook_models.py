@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 from typing import Any
 
@@ -56,7 +56,7 @@ class WebhookEvent:
     payload: Any
 
     received_at: datetime = field(
-        default_factory=datetime.utcnow
+        default_factory=lambda: datetime.now(UTC)
     )
 
 
@@ -67,6 +67,8 @@ class IncomingMessageEvent:
 
     tenant_id identifies the Heshly tenant that owns
     the WhatsApp number receiving the message.
+    Must be resolved via phone_number_id -> tenant mapping,
+    never defaulted to "default" in production.
     """
 
     message_id: str
@@ -83,7 +85,15 @@ class IncomingMessageEvent:
 
     phone_number_id: str | None = None
 
-    tenant_id: str = "default"
+    tenant_id: str = field(default="")
+
+    def __post_init__(self):
+        if not self.message_id:
+            raise ValueError("message_id is required")
+        if not self.phone_number:
+            raise ValueError("phone_number is required")
+        if not self.tenant_id:
+            raise ValueError("tenant_id is required - tenant resolution failed")
 
 
 @dataclass(slots=True)
@@ -99,6 +109,10 @@ class MessageStatusEvent:
     status: str
 
     timestamp: str | None = None
+
+    def __post_init__(self):
+        if not self.message_id:
+            raise ValueError("message_id is required")
 
 
 @dataclass(slots=True)
@@ -118,6 +132,12 @@ class MediaEvent:
     sha256: str | None = None
 
     caption: str | None = None
+
+    def __post_init__(self):
+        if not self.message_id:
+            raise ValueError("message_id is required")
+        if not self.media_id:
+            raise ValueError("media_id is required")
 
 
 @dataclass(slots=True)

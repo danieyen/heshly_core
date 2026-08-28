@@ -25,10 +25,17 @@ class WhatsAppAuthentication:
         configuration: WhatsAppConfiguration,
     ) -> dict[str, str]:
 
+        if not configuration or not configuration.access_token:
+            raise ValueError("access_token is required to build headers")
+
+        token = configuration.access_token.strip()
+        if not token:
+            raise ValueError("access_token must be non-empty")
+
         return {
 
             "Authorization":
-                f"Bearer {configuration.access_token}",
+                f"Bearer {token}",
 
             "Content-Type":
                 "application/json",
@@ -44,9 +51,18 @@ class WhatsAppAuthentication:
         X-Hub-Signature-256 value.
         """
 
+        if not configuration or not configuration.app_secret:
+            raise ValueError("app_secret is required to compute signature")
+
+        if payload is None:
+            payload = b""
+
+        if isinstance(payload, str):
+            payload = payload.encode("utf-8")
+
         digest = hmac.new(
 
-            configuration.app_secret.encode(),
+            configuration.app_secret.encode("utf-8"),
 
             payload,
 
@@ -64,15 +80,30 @@ class WhatsAppAuthentication:
     ) -> bool:
         """
         Validates the webhook signature.
+        Uses constant-time comparison to prevent timing attacks.
         """
 
-        expected = self.compute_signature(
+        if not received_signature:
+            return False
 
-            configuration,
+        if not configuration or not configuration.app_secret:
+            return False
 
-            payload,
+        try:
+            expected = self.compute_signature(
 
-        )
+                configuration,
+
+                payload,
+
+            )
+        except ValueError:
+            return False
+
+        # Normalize: Meta sends "sha256=..."
+        # Ensure both are strings for compare_digest
+        if not isinstance(received_signature, str):
+            received_signature = str(received_signature)
 
         return hmac.compare_digest(
 
