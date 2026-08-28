@@ -53,7 +53,7 @@ class WebhookEvent:
 
     event_type: WebhookEventType
 
-    payload: dict[str, Any]
+    payload: Any
 
     received_at: datetime = field(
         default_factory=datetime.utcnow
@@ -64,6 +64,9 @@ class WebhookEvent:
 class IncomingMessageEvent:
     """
     Incoming customer message.
+
+    tenant_id identifies the Heshly tenant that owns
+    the WhatsApp number receiving the message.
     """
 
     message_id: str
@@ -77,6 +80,10 @@ class IncomingMessageEvent:
     text: str | None = None
 
     timestamp: str | None = None
+
+    phone_number_id: str | None = None
+
+    tenant_id: str = "default"
 
 
 @dataclass(slots=True)

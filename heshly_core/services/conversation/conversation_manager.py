@@ -32,8 +32,13 @@ class ConversationManager:
         cache=None,
         lifecycle=None,
         recovery=None,
+        tenant_id: str = "default",
+        channel: str = "whatsapp",
     ):
-        self.store = store or ConversationStore()
+        self.store = store or ConversationStore(
+            tenant_id=tenant_id,
+            channel=channel,
+        )
 
         self.cache = cache
         self.lifecycle = lifecycle

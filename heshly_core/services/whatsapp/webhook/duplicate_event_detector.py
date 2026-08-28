@@ -59,7 +59,18 @@ class WhatsAppDuplicateEventDetector:
         event,
     ) -> str:
 
-        return event.message_id
+        message_id = getattr(
+            event,
+            "message_id",
+            None,
+        )
+
+        if not message_id:
+            raise ValueError(
+                "Webhook event has no message_id."
+            )
+
+        return message_id
 
     def _cleanup(
         self,

@@ -1,69 +1,131 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from typing import Generic, TypeVar
+
+from heshly_core.services.tenant.tenant_context import (
+    TenantContext,
+)
+
+from heshly_core.services.tenant.tenant_permission_manager import (
+    TenantPermissionManager,
+)
 
 
 T = TypeVar("T")
 
 
-class BaseRepository(ABC, Generic[T]):
+class BaseRepository(Generic[T]):
     """
-    Abstract repository interface.
+    Base class for tenant-aware repositories.
 
-    All repository implementations
-    (Memory, ERPNext, PostgreSQL, etc.)
-    must implement these methods.
+    TenantContext contains the canonical tenant_id.
+
+    business_id and tenant_id are deliberately
+    different concepts.
     """
 
-    @abstractmethod
-    def save(self, entity: T) -> T:
-        """
-        Create or update an entity.
-        """
-        raise NotImplementedError
+    def __init__(self):
 
-    @abstractmethod
-    def get(self, entity_id: str) -> T | None:
-        """
-        Retrieve a single entity.
-        """
-        raise NotImplementedError
+        self.context = TenantContext()
 
-    @abstractmethod
-    def list(self) -> list[T]:
-        """
-        Return all entities.
-        """
-        raise NotImplementedError
+        self.permission = TenantPermissionManager()
 
-    @abstractmethod
-    def delete(self, entity_id: str) -> bool:
-        """
-        Delete an entity.
+    # =====================================================
+    # Current Tenant
+    # =====================================================
 
-        Returns True if deleted,
-        otherwise False.
-        """
-        raise NotImplementedError
+    def current_tenant(self) -> str:
 
-    @abstractmethod
-    def exists(self, entity_id: str) -> bool:
-        """
-        Check whether an entity exists.
-        """
-        raise NotImplementedError
+        return self.context.require()
 
-    @abstractmethod
-    def count(self) -> int:
-        """
-        Return total number of entities.
-        """
-        raise NotImplementedError
+    # =====================================================
+    # Require Tenant Access
+    # =====================================================
 
-    @abstractmethod
-    def clear(self) -> None:
-        """
-        Remove every entity.
-        """
-        raise NotImplementedError
+    def require_tenant(
+        self,
+        tenant_id: str | None = None,
+    ) -> str:
+
+        if tenant_id is None:
+            tenant_id = self.current_tenant()
+
+        self.permission.require_tenant(
+            tenant_id
+        )
+
+        return tenant_id
+
+    # =====================================================
+    # Tenant Filter
+    # =====================================================
+
+    def tenant_filter(
+        self,
+        tenant_id: str | None = None,
+    ) -> dict:
+
+        return {
+            "tenant_id": self.require_tenant(
+                tenant_id
+            )
+        }
+
+    # =====================================================
+    # Apply Tenant Filter
+    # =====================================================
+
+    def apply_tenant_filter(
+        self,
+        filters: dict | None = None,
+    ) -> dict:
+
+        result = dict(filters or {})
+
+        result.update(
+            self.tenant_filter()
+        )
+
+        return result
+
+    # =====================================================
+    # Access Check
+    # =====================================================
+
+    def can_access(
+        self,
+        tenant_id: str,
+    ) -> bool:
+
+        return self.permission.can_access_tenant(
+            tenant_id
+        )
+
+    # =====================================================
+    # Tenant Exists
+    # =====================================================
+
+    def has_tenant(self) -> bool:
+
+        return self.context.has_context()
+
+    # =====================================================
+    # Clear
+    # =====================================================
+
+    def clear(self):
+
+        self.context.clear()
+
+    # =====================================================
+    # Health
+    # =====================================================
+
+    def health(self):
+
+        return {
+            "repository": self.__class__.__name__,
+            "status": "healthy",
+            "tenant": self.has_tenant(),
+            "admin": self.permission.is_system_admin(),
+        }

@@ -123,25 +123,28 @@ class WhatsAppWebhookEvent:
 class WhatsAppConfiguration:
     """
     WhatsApp Cloud API configuration.
+
+    Mirrors the persistent Heshly WhatsApp Configuration
+    DocType and is the runtime configuration contract used
+    by the WhatsApp services.
     """
 
-    business_name: str
-
+    configuration_id: str
+    tenant_id: str
+    business_id: str
+    business_account_id: str
     phone_number_id: str
 
-    business_account_id: str
-
     access_token: str
-
     verify_token: str
-
     app_secret: str
 
+    display_phone_number: str = ""
+    webhook_url: str = ""
+    language: str = "en"
     api_version: str = "v23.0"
-
-    webhook_path: str = "/api/whatsapp/webhook"
-
-    enabled: bool = True
+    webhook_enabled: bool = True
+    business_name: str = ""
 
 
 @dataclass(slots=True)

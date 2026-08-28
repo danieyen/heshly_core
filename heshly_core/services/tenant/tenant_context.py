@@ -2,125 +2,77 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 
-from heshly_core.models.tenant import (
-    Tenant,
+
+_current_tenant: ContextVar[str | None] = ContextVar(
+    "current_tenant",
+    default=None,
 )
 
 
-class TenantContextManager:
+class TenantContext:
     """
-    Shared Tenant Context Manager.
-
-    Maintains the active tenant context
-    across Heshly services.
-
-    Used by:
-
-    - API requests
-    - AI engine
-    - CRM
-    - Calendar
-    - Analytics
+    Stores the canonical tenant_id for the lifetime
+    of the current request/execution context.
     """
-
-
-    _tenant_context = ContextVar(
-        "tenant_context",
-        default=None,
-    )
-
-
-    # =====================================================
-    # Set Tenant
-    # =====================================================
 
     def set(
         self,
-        tenant: Tenant,
-    ):
+        tenant_id: str,
+    ) -> None:
 
-        return self._tenant_context.set(
-            tenant
-        )
-
-
-    # =====================================================
-    # Get Tenant
-    # =====================================================
-
-    def get(self) -> Tenant | None:
-
-        return self._tenant_context.get()
-
-
-    # =====================================================
-    # Require Tenant
-    # =====================================================
-
-    def require(self) -> Tenant:
-
-        tenant = self.get()
-
-
-        if tenant is None:
-
-            raise RuntimeError(
-                "No tenant context available"
+        if not tenant_id:
+            raise ValueError(
+                "tenant_id is required."
             )
 
-
-        return tenant
-
-
-    # =====================================================
-    # Tenant ID
-    # =====================================================
-
-    def tenant_id(self) -> str | None:
-
-        tenant = self.get()
-
-
-        if tenant is None:
-
-            return None
-
-
-        return tenant.tenant_id
-
-
-    # =====================================================
-    # Clear
-    # =====================================================
-
-    def clear(self):
-
-        self._tenant_context.set(
-            None
+        _current_tenant.set(
+            tenant_id
         )
 
+    def get(
+        self,
+    ) -> str | None:
 
-    # =====================================================
-    # Exists
-    # =====================================================
+        return _current_tenant.get()
 
-    def has_context(self) -> bool:
+    def tenant_id(
+        self,
+    ) -> str | None:
+
+        return self.get()
+
+    def require(
+        self,
+    ) -> str:
+
+        tenant_id = self.get()
+
+        if tenant_id is None:
+            raise RuntimeError(
+                "No tenant context available."
+            )
+
+        return tenant_id
+
+    def clear(
+        self,
+    ) -> None:
+
+        _current_tenant.set(None)
+
+    def has_context(
+        self,
+    ) -> bool:
 
         return self.get() is not None
 
-
-    # =====================================================
-    # Health
-    # =====================================================
-
-    def health(self):
+    def health(
+        self,
+    ) -> dict:
 
         return {
-
-            "service": "tenant_context_manager",
-
+            "service": "tenant_context",
             "status": "healthy",
-
-            "tenant_id": self.tenant_id(),
-
+            "tenant": self.get(),
+            "has_context": self.has_context(),
         }
