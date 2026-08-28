@@ -1,4 +1,5 @@
 from datetime import datetime, UTC
+from typing import Any
 
 from heshly_core.models.conversation import (
     Conversation,
@@ -10,6 +11,18 @@ from heshly_core.models.conversation import (
 from heshly_core.services.conversation.conversation_store import (
     ConversationStore,
 )
+
+
+def _parse_json_if_string(value: Any) -> Any:
+    if isinstance(value, str):
+        import json
+        value = value.strip()
+        if (value.startswith("{") and value.endswith("}")) or (value.startswith("[") and value.endswith("]")):
+            try:
+                return json.loads(value)
+            except Exception:
+                return value
+    return value
 
 
 class ConversationManager:
@@ -77,6 +90,22 @@ class ConversationManager:
 
         self.save(conversation)
 
+        return conversation
+
+    def create_from_dict(self, data: Any) -> Conversation:
+        """
+        Create from n8n payload that may be JSON string or nested under body.
+        """
+        data = _parse_json_if_string(data)
+        if isinstance(data, dict) and "body" in data and isinstance(data["body"], dict):
+            # Handle n8n $json.body nesting
+            data = data["body"]
+        if isinstance(data, dict) and "json" in data and isinstance(data["json"], dict):
+            data = data["json"]
+        conversation = Conversation.from_dict(data)
+        if self.lifecycle:
+            self.lifecycle.start(conversation)
+        self.save(conversation)
         return conversation
 
 
@@ -149,9 +178,12 @@ class ConversationManager:
     def set_status(
         self,
         conversation: Conversation,
-        status: ConversationStatus,
+        status: Any,
     ) -> None:
 
+        # Handle string status from n8n Switch nodes
+        if isinstance(status, str):
+            status = ConversationStatus.from_value(status)
         if not isinstance(status, ConversationStatus):
             raise ValueError(f"status must be ConversationStatus, got {status}")
         conversation.status = status
@@ -207,6 +239,16 @@ class ConversationManager:
         if not conversation_id:
             raise ValueError("conversation_id is required")
 
+        # Handle n8n passing JSON string or nested object
+        if isinstance(conversation_id, dict):
+            # Extract from n8n $json.body
+            conversation_id = conversation_id.get("conversation_id") or conversation_id.get("conversationId") or conversation_id.get("id") or ""
+            if isinstance(conversation_id, dict):
+                conversation_id = str(conversation_id)
+        conversation_id = str(conversation_id).strip()
+        if not conversation_id:
+            raise ValueError("conversation_id is required")
+
         # 1. Check cache
 
         if self.cache:
@@ -248,6 +290,9 @@ class ConversationManager:
         self,
         conversation: Conversation,
     ) -> None:
+
+        if isinstance(conversation, dict) or isinstance(conversation, str):
+            conversation = Conversation.from_dict(_parse_json_if_string(conversation))
 
         conversation.updated_at = datetime.now(UTC)
 

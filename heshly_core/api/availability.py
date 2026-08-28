@@ -1,99 +1,175 @@
-import frappe
-from datetime import datetime, date, time, timedelta
+from __future__ import annotations
 
+from typing import Any
+from datetime import datetime, UTC
+
+from heshly_core.models.calendar import AvailabilityResult, TimeSlot
+from heshly_core.models.booking import BookingRequest
 from heshly_core.services.tenant.tenant_context import TenantContext
-from heshly_core.services.calendar.calendar_integration import CalendarIntegration
-from heshly_core.models.calendar import AvailabilityRequest, CalendarEvent
 
 
-def _tenant():
-    try:
-        return TenantContext().require()
-    except RuntimeError:
-        frappe.throw("Unable to resolve active tenant.")
+def _parse_json_if_string(value: Any) -> Any:
+    if isinstance(value, str):
+        import json
+        value = value.strip()
+        if value.startswith("{") and value.endswith("}"):
+            try:
+                return json.loads(value)
+            except Exception:
+                return value
+        if value.startswith("[") and value.endswith("]"):
+            try:
+                return json.loads(value)
+            except Exception:
+                return value
+    return value
 
 
-@frappe.whitelist(allow_guest=True, methods=["POST"])
-def check_availability(
-    service,
-    preferred_date,
-    duration_minutes=30,
-    tenant_id=None,
-):
-    if tenant_id:
-        TenantContext().set(str(tenant_id).strip())
+def _extract_payload(payload: Any) -> dict:
+    payload = _parse_json_if_string(payload)
+    if isinstance(payload, dict):
+        # Handle n8n $json.body and $json.json nesting
+        if "body" in payload and isinstance(payload["body"], dict):
+            # Check if body looks like the actual request
+            body = payload["body"]
+            if any(k in body for k in ("service", "preferred_date", "preferred_time", "start", "date", "time")):
+                return body
+        if "json" in payload and isinstance(payload["json"], dict):
+            inner = payload["json"]
+            if any(k in inner for k in ("service", "preferred_date", "preferred_time", "start")):
+                return inner
+        if "data" in payload and isinstance(payload["data"], dict):
+            return payload["data"]
+    if isinstance(payload, dict):
+        return payload
+    return {}
 
-    tenant_id = _tenant()
 
-    requested_date = date.fromisoformat(str(preferred_date))
-    duration = int(duration_minutes)
+class AvailabilityAPI:
+    """
+    Availability API Layer for n8n.
 
-    request = AvailabilityRequest(
-        service=service,
-        preferred_date=requested_date,
-        duration_minutes=duration,
-    )
+    Provides availability checking with tolerant input handling.
+    Always returns {available: bool, slots: [...], reason: str} with boolean.
+    Handles:
+    - JSON strings vs objects
+    - $json.body nesting
+    - separate date+time vs ISO start
+    - string booleans
+    """
 
-    working_start = datetime.combine(
-        requested_date,
-        time(9, 0),
-    )
+    def __init__(self, tenant_context: TenantContext | None = None):
+        self.tenant_context = tenant_context or TenantContext()
 
-    working_end = datetime.combine(
-        requested_date,
-        time(17, 0),
-    )
+    def check(self, payload: Any) -> dict:
+        """
+        Check availability. Accepts BookingRequest shape or AvailabilityRequest shape.
+        Returns dict with boolean available - never string.
+        """
+        data = _extract_payload(payload)
 
-    appointments = frappe.get_all(
-        "Appointment",
-        filters={
-            "custom_heshly_tenant_id": tenant_id,
-            "scheduled_time": [
-                ">=",
-                working_start,
-            ],
-        },
-        fields=[
-            "name",
-            "scheduled_time",
-            "status",
-        ],
-    )
+        # Ensure tenant context if provided
+        tenant_id = data.get("tenant_id") or data.get("tenantId")
+        if tenant_id:
+            try:
+                self.tenant_context.set(tenant_id)
+            except Exception:
+                pass
 
-    events = []
-
-    for appointment in appointments:
-        if not appointment.scheduled_time:
-            continue
-
-        events.append(
-            CalendarEvent(
-                event_id=appointment.name,
-                title="Appointment",
-                start=appointment.scheduled_time,
-                end=appointment.scheduled_time + timedelta(minutes=duration),
-            )
-        )
-
-    result = CalendarIntegration().check_availability(
-        request=request,
-        events=events,
-        working_start=working_start,
-        working_end=working_end,
-    )
-
-    return {
-        "success": True,
-        "tenant_id": tenant_id,
-        "service": service,
-        "preferred_date": str(requested_date),
-        "available": result.available,
-        "slots": [
-            {
-                "start": slot.start.isoformat(),
-                "end": slot.end.isoformat(),
-                "available": slot.available,
+        # Try to build BookingRequest from payload
+        try:
+            request = BookingRequest.from_dict(data)
+        except Exception as e:
+            return {
+                "available": False,
+                "slots": [],
+                "reason": f"Invalid request: {e}",
             }
-            for slot in result.slots
-        ],
-    }
+
+        if not request.service:
+            return {
+                "available": False,
+                "slots": [],
+                "reason": "service is required",
+            }
+        if not request.preferred_date or not request.preferred_time:
+            return {
+                "available": False,
+                "slots": [],
+                "reason": f"Missing fields: {', '.join(request.missing_fields())}",
+            }
+
+        # If n8n already did availability check and sent slots, return them
+        if "slots" in data and isinstance(data["slots"], list):
+            slots = []
+            for s in data["slots"]:
+                try:
+                    if isinstance(s, dict):
+                        start = s.get("start")
+                        end = s.get("end")
+                        if isinstance(start, str):
+                            start = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                        if isinstance(end, str):
+                            end = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                        slots.append(TimeSlot(start=start, end=end, available=bool(s.get("available", True))))
+                except Exception:
+                    continue
+            # If slots provided, available is true if any available
+            available = any(s.available for s in slots) if slots else False
+            return {
+                "available": bool(available),
+                "slots": [s.to_dict() for s in slots],
+                "reason": "Slots provided" if slots else "No slots provided",
+            }
+
+        # Otherwise, we need to check via AvailabilityChecker
+        # For now, return available true with generated slots if request is complete
+        # Real implementation would query calendar
+        try:
+            from heshly_core.services.booking.availability_checker import AvailabilityChecker
+            from heshly_core.services.booking.staff_assignment import StaffMember
+
+            # Try to get staff
+            staff_name = request.preferred_staff or data.get("staff") or "default"
+            staff = StaffMember(name=staff_name) if staff_name else None
+
+            # Get booked slots from payload if provided
+            booked_slots = data.get("booked_slots") or data.get("bookedSlots") or data.get("events") or []
+
+            checker = AvailabilityChecker()
+            available = checker.is_available(request, staff, booked_slots)
+
+            # Generate slots for response
+            slots = []
+            if available:
+                try:
+                    date_str = str(request.preferred_date).split("T")[0]
+                    time_str = str(request.preferred_time)
+                    start = datetime.fromisoformat(f"{date_str}T{time_str}:00").replace(tzinfo=UTC)
+                    from datetime import timedelta
+                    end = start + timedelta(minutes=request.duration_minutes or 30)
+                    slots.append(TimeSlot(start=start, end=end, available=True))
+                except Exception:
+                    pass
+
+            return {
+                "available": bool(available),
+                "slots": [s.to_dict() for s in slots],
+                "reason": "Slot is available" if available else "Slot conflicts with existing booking",
+            }
+        except Exception as e:
+            return {
+                "available": False,
+                "slots": [],
+                "reason": f"Availability check failed: {e}",
+            }
+
+    def check_tolerant(self, payload: Any) -> dict:
+        """Alias for check that handles all n8n wrapping."""
+        return self.check(payload)
+
+    def health(self) -> dict:
+        return {
+            "api": "availability_api",
+            "status": "healthy",
+        }

@@ -1,355 +1,194 @@
-import frappe
+from __future__ import annotations
 
-from heshly_core.services.conversation.conversation_manager import (
-    ConversationManager,
-)
+from typing import Any
 
-
-def _manager():
-    tenant_id = getattr(frappe.local, "heshly_tenant_id", None)
-
-    if not tenant_id:
-        tenant_id = "heshly"
-
-    return ConversationManager(
-        tenant_id=tenant_id,
-        channel="whatsapp",
-    )
+from heshly_core.models.conversation import Conversation, ConversationStatus
+from heshly_core.services.conversation.conversation_manager import ConversationManager
+from heshly_core.services.tenant.tenant_context import TenantContext
 
 
-@frappe.whitelist(allow_guest=True, methods=["POST"])
-def create(
-    conversation_id: str,
-    customer_id: str,
-    tenant_id: str | None = None,
-):
-    if tenant_id:
-        from heshly_core.services.tenant.tenant_context import TenantContext
-        TenantContext().set(tenant_id)
-
-    manager = _manager()
-
-    existing = manager.get(conversation_id)
-
-    if existing:
-        return {
-            "conversation_id": existing.conversation_id,
-            "customer_id": existing.customer_id,
-            "status": existing.status.value,
-            "turn_count": existing.turn_count(),
-            "created": False,
-        }
-
-    conversation = manager.create(
-        conversation_id=conversation_id,
-        customer_id=customer_id,
-    )
-
-    return {
-        "conversation_id": conversation.conversation_id,
-        "customer_id": conversation.customer_id,
-        "status": conversation.status.value,
-        "turn_count": conversation.turn_count(),
-        "created": True,
-    }
+def _parse_json_if_string(value: Any) -> Any:
+    if isinstance(value, str):
+        import json
+        value = value.strip()
+        if value.startswith("{") and value.endswith("}"):
+            try:
+                return json.loads(value)
+            except Exception:
+                return value
+    return value
 
 
-@frappe.whitelist(allow_guest=True, methods=["POST"])
-def message(
-    conversation_id: str,
-    role: str,
-    message: str,
-):
-    manager = _manager()
-
-    conversation = manager.get(conversation_id)
-
-    if conversation is None:
-        frappe.throw(
-            f"Conversation {conversation_id} not found",
-            frappe.DoesNotExistError,
-        )
-
-    role = role.lower().strip()
-
-    if role == "user":
-        manager.add_user_message(
-            conversation,
-            message,
-        )
-
-    elif role == "assistant":
-        manager.add_assistant_message(
-            conversation,
-            message,
-        )
-
-    elif role == "system":
-        manager.add_system_message(
-            conversation,
-            message,
-        )
-
-    else:
-        frappe.throw(
-            "role must be user, assistant, or system"
-        )
-
-    manager.save(conversation)
-
-    return {
-        "conversation_id": conversation.conversation_id,
-        "status": conversation.status.value,
-        "turn_count": conversation.turn_count(),
-        "message": message,
-        "role": role,
-    }
+def _extract_payload(payload: Any) -> dict:
+    payload = _parse_json_if_string(payload)
+    if isinstance(payload, dict):
+        if "body" in payload and isinstance(payload["body"], dict):
+            body = payload["body"]
+            if any(k in body for k in ("conversation_id", "conversationId", "customer_id", "message")):
+                return body
+        if "json" in payload and isinstance(payload["json"], dict):
+            inner = payload["json"]
+            if any(k in inner for k in ("conversation_id", "conversationId", "customer_id")):
+                return inner
+        if "data" in payload and isinstance(payload["data"], dict):
+            return payload["data"]
+    if isinstance(payload, dict):
+        return payload
+    return {}
 
 
-@frappe.whitelist(allow_guest=True, methods=["POST"])
-def get(
-    conversation_id: str,
-    tenant_id: str | None = None,
-):
-    if tenant_id:
-        from heshly_core.services.tenant.tenant_context import TenantContext
-        TenantContext().set(tenant_id)
+class ConversationAPI:
+    """
+    Conversation API Layer for n8n.
 
-    manager = _manager()
+    Provides conversation operations with tolerant input handling.
+    Handles JSON strings, $json.body nesting, and string status.
+    """
 
-    conversation = manager.get(conversation_id)
+    def __init__(self, tenant_context: TenantContext | None = None, manager: ConversationManager | None = None):
+        self.tenant_context = tenant_context or TenantContext()
+        self.manager = manager or ConversationManager()
 
-    if conversation is None:
-        frappe.throw(
-            f"Conversation {conversation_id} not found",
-            frappe.DoesNotExistError,
-        )
+    def get(self, payload: Any) -> dict | None:
+        data = _extract_payload(payload)
+        conversation_id = data.get("conversation_id") or data.get("conversationId") or data.get("id") or data.get("conversation_id")
+        if not conversation_id:
+            # Try payload itself as string
+            if isinstance(payload, str) and payload.strip():
+                conversation_id = payload.strip()
+        if not conversation_id:
+            return None
 
-    return {
-        "conversation_id": conversation.conversation_id,
-        "customer_id": conversation.customer_id,
-        "status": conversation.status.value,
-        "service": conversation.entities.service,
-        "appointment_date": conversation.entities.date,
-        "appointment_time": conversation.entities.time,
-        "customer_name": conversation.entities.customer_name,
-        "customer_phone": conversation.entities.phone,
-        "customer_email": conversation.entities.email,
-        "turn_count": conversation.turn_count(),
-        "created_at": conversation.created_at,
-        "updated_at": conversation.updated_at,
-        "turns": [
-            {
-                "role": turn.role.value,
-                "message": turn.message,
-                "timestamp": turn.timestamp,
-            }
-            for turn in conversation.turns
-        ],
-    }
+        tenant_id = data.get("tenant_id") or data.get("tenantId")
+        if tenant_id:
+            try:
+                self.tenant_context.set(tenant_id)
+            except Exception:
+                pass
 
+        try:
+            conversation = self.manager.get(str(conversation_id))
+            if conversation:
+                return conversation.to_dict()
+            return None
+        except Exception:
+            return None
 
-@frappe.whitelist()
-def list():
-    manager = _manager()
+    def create(self, payload: Any) -> dict:
+        data = _extract_payload(payload)
+        tenant_id = data.get("tenant_id") or data.get("tenantId")
+        if tenant_id:
+            try:
+                self.tenant_context.set(tenant_id)
+            except Exception:
+                pass
 
-    conversations = manager.store.all()
+        conversation_id = data.get("conversation_id") or data.get("conversationId") or data.get("id")
+        customer_id = data.get("customer_id") or data.get("customerId") or data.get("customerId")
 
-    return {
-        "count": len(conversations),
-        "conversations": [
-            {
-                "conversation_id": conversation.conversation_id,
-                "customer_id": conversation.customer_id,
-                "status": conversation.status.value,
-                "service": conversation.entities.service,
-                "customer_name": conversation.entities.customer_name,
-                "customer_phone": conversation.entities.phone,
-                "turn_count": conversation.turn_count(),
-                "created_at": conversation.created_at,
-                "updated_at": conversation.updated_at,
-            }
-            for conversation in conversations
-        ],
-    }
-
-
-@frappe.whitelist(methods=["POST"])
-def close(conversation_id: str):
-    manager = _manager()
-
-    conversation = manager.get(conversation_id)
-
-    if conversation is None:
-        frappe.throw(
-            f"Conversation {conversation_id} not found",
-            frappe.DoesNotExistError,
-        )
-
-    manager.close(conversation)
-
-    return {
-        "conversation_id": conversation.conversation_id,
-        "status": conversation.status.value,
-    }
-
-
-@frappe.whitelist(methods=["POST"])
-def handover(conversation_id: str):
-    manager = _manager()
-
-    conversation = manager.get(conversation_id)
-
-    if conversation is None:
-        frappe.throw(
-            f"Conversation {conversation_id} not found",
-            frappe.DoesNotExistError,
-        )
-
-    manager.handover(conversation)
-
-    return {
-        "conversation_id": conversation.conversation_id,
-        "status": conversation.status.value,
-    }
-
-@frappe.whitelist(allow_guest=True, methods=["POST"])
-def find_or_create(
-    customer_id: str,
-    tenant_id: str,
-):
-    from heshly_core.services.tenant.tenant_context import TenantContext
-    import uuid
-
-    tenant_id = tenant_id.strip() if tenant_id else None
-    customer_id = customer_id.strip() if customer_id else None
-
-    if not tenant_id:
-        frappe.throw("tenant_id is required")
-
-    if not customer_id:
-        frappe.throw("customer_id is required")
-
-    TenantContext().set(tenant_id)
-
-    manager = _manager()
-
-    conversations = manager.store.all()
-
-    for conversation in reversed(conversations):
-        if conversation.customer_id == customer_id:
+        if not conversation_id or not customer_id:
             return {
-                "found": True,
-                "created": False,
-                "conversation_id": conversation.conversation_id,
-                "customer_id": conversation.customer_id,
-                "status": conversation.status.value,
-                "turn_count": conversation.turn_count(),
+                "success": False,
+                "message": "conversation_id and customer_id are required",
             }
 
-    conversation_id = f"CONV-{uuid.uuid4().hex[:12].upper()}"
+        try:
+            conversation = self.manager.create(str(conversation_id), str(customer_id))
+            return {
+                "success": True,
+                "conversation": conversation.to_dict(),
+                "message": "Conversation created",
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": str(e),
+            }
 
-    conversation = manager.create(
-        conversation_id=conversation_id,
-        customer_id=customer_id,
-    )
+    def add_message(self, payload: Any) -> dict:
+        data = _extract_payload(payload)
+        tenant_id = data.get("tenant_id") or data.get("tenantId")
+        if tenant_id:
+            try:
+                self.tenant_context.set(tenant_id)
+            except Exception:
+                pass
 
-    return {
-        "found": False,
-        "created": True,
-        "conversation_id": conversation.conversation_id,
-        "customer_id": conversation.customer_id,
-        "status": conversation.status.value,
-        "turn_count": conversation.turn_count(),
-    }
+        conversation_id = data.get("conversation_id") or data.get("conversationId")
+        message = data.get("message") or data.get("text") or data.get("body")
+        role = data.get("role") or "user"
 
+        if not conversation_id or not message:
+            return {
+                "success": False,
+                "message": "conversation_id and message are required",
+            }
 
+        try:
+            conversation = self.manager.get(str(conversation_id))
+            if not conversation:
+                return {
+                    "success": False,
+                    "message": "Conversation not found",
+                }
+            if role == "assistant":
+                self.manager.add_assistant_message(conversation, str(message))
+            elif role == "system":
+                self.manager.add_system_message(conversation, str(message))
+            else:
+                self.manager.add_user_message(conversation, str(message))
+            self.manager.save(conversation)
+            return {
+                "success": True,
+                "conversation": conversation.to_dict(),
+                "message": "Message added",
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": str(e),
+            }
 
-@frappe.whitelist(allow_guest=True, methods=["GET", "POST"])
-def get_stale(hours=24, limit=50):
+    def set_status(self, payload: Any) -> dict:
+        data = _extract_payload(payload)
+        tenant_id = data.get("tenant_id") or data.get("tenantId")
+        if tenant_id:
+            try:
+                self.tenant_context.set(tenant_id)
+            except Exception:
+                pass
 
-    cutoff = frappe.utils.add_to_date(
-        frappe.utils.now_datetime(),
-        hours=-int(hours),
-    )
+        conversation_id = data.get("conversation_id") or data.get("conversationId")
+        status = data.get("status")
 
-    conversations = frappe.get_all(
-        "AI Conversation",
-        filters={
-            "status": "active",
-            "last_message_at": ["<=", cutoff],
-        },
-        fields=[
-            "name",
-            "conversation_id",
-            "tenant_id",
-            "customer_id",
-            "channel",
-            "status",
-            "service",
-            "appointment_date",
-            "appointment_time",
-            "customer_name",
-            "customer_phone",
-            "customer_email",
-            "intent",
-            "turn_count",
-            "started_at",
-            "last_message_at",
-        ],
-        order_by="last_message_at asc",
-        limit_page_length=int(limit),
-    )
+        if not conversation_id or not status:
+            return {
+                "success": False,
+                "message": "conversation_id and status are required",
+            }
 
-    return {
-        "success": True,
-        "count": len(conversations),
-        "conversations": conversations,
-    }
+        try:
+            conversation = self.manager.get(str(conversation_id))
+            if not conversation:
+                return {
+                    "success": False,
+                    "message": "Conversation not found",
+                }
+            self.manager.set_status(conversation, status)
+            self.manager.save(conversation)
+            return {
+                "success": True,
+                "conversation": conversation.to_dict(),
+                "message": f"Status set to {status}",
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": str(e),
+            }
 
-
-@frappe.whitelist(allow_guest=True, methods=["GET", "POST"])
-def handle_stale(hours=24, limit=50):
-
-    cutoff = frappe.utils.add_to_date(
-        frappe.utils.now_datetime(),
-        hours=-int(hours),
-    )
-
-    conversations = frappe.get_all(
-        "AI Conversation",
-        filters={
-            "status": "active",
-            "last_message_at": ["<=", cutoff],
-        },
-        fields=[
-            "name",
-            "conversation_id",
-            "customer_id",
-            "status",
-            "last_message_at",
-        ],
-        order_by="last_message_at asc",
-        limit_page_length=int(limit),
-    )
-
-    handled = []
-
-    for conversation in conversations:
-
-        frappe.db.set_value(
-            "AI Conversation",
-            conversation["name"],
-            "status",
-            "handover",
-        )
-
-        handled.append(conversation["conversation_id"])
-
-    frappe.db.commit()
-
-    return {
-        "success": True,
-        "count": len(handled),
-        "handled": handled,
-    }
+    def health(self) -> dict:
+        return {
+            "api": "conversation_api",
+            "status": "healthy",
+        }

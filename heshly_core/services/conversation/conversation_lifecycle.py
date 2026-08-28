@@ -1,4 +1,5 @@
 from datetime import datetime, UTC
+from typing import Any
 
 from heshly_core.models.conversation import Conversation, ConversationStatus
 
@@ -8,7 +9,15 @@ class ConversationLifecycle:
     Manages conversation state transitions.
     Uses ConversationStatus enum to guarantee contract with
     ConversationManager, persistence, and n8n routing.
+    Handles string status from n8n gracefully.
     """
+
+    def _normalize_status(self, status: Any) -> ConversationStatus:
+        if isinstance(status, ConversationStatus):
+            return status
+        if isinstance(status, str):
+            return ConversationStatus.from_value(status)
+        raise ValueError(f"status must be ConversationStatus or string, got {status}")
 
     def start(self, conversation: Conversation) -> Conversation:
         """
@@ -57,5 +66,16 @@ class ConversationLifecycle:
         if conversation is None:
             raise ValueError("conversation is required")
         conversation.status = ConversationStatus.CLOSED
+        conversation.updated_at = datetime.now(UTC)
+        return conversation
+
+    def transition(self, conversation: Conversation, status: Any) -> Conversation:
+        """
+        Transition to any status, handling string values from n8n.
+        """
+        if conversation is None:
+            raise ValueError("conversation is required")
+        normalized = self._normalize_status(status)
+        conversation.status = normalized
         conversation.updated_at = datetime.now(UTC)
         return conversation
