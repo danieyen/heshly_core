@@ -19,6 +19,11 @@ def _parse_json_if_string(value: Any) -> Any:
                 return json.loads(value)
             except Exception:
                 return value
+        if value.startswith("[") and value.endswith("]"):
+            try:
+                return json.loads(value)
+            except Exception:
+                return value
     return value
 
 
@@ -27,28 +32,56 @@ class TenantContext:
     Stores the canonical tenant_id for the lifetime
     of the current request/execution context.
     Single source of truth for tenant isolation.
-    Tolerant to n8n sending tenant_id nested under body/json or as JSON string.
+    Tolerant to n8n sending tenant_id nested under body/json/data/business or as JSON string.
+    Never defaults to "heshly" or "default" - empty tenant is an error.
     """
 
     def _extract_tenant_id(self, tenant_id: Any) -> str | None:
         if tenant_id is None:
             return None
-        # Handle n8n wrapping
+        # Handle n8n wrapping dict
         if isinstance(tenant_id, dict):
-            # Try to extract from nested structure
-            for key in ("tenant_id", "tenantId", "tenant", "body", "json"):
+            # Direct keys
+            for key in ("tenant_id", "tenantId", "tenant", "business_id", "businessId"):
                 if key in tenant_id:
                     val = tenant_id[key]
                     if isinstance(val, str) and val.strip():
                         return val.strip()
                     if isinstance(val, dict):
-                        # Recurse one level
-                        for k2 in ("tenant_id", "tenantId"):
+                        for k2 in ("tenant_id", "tenantId", "id"):
                             if k2 in val and isinstance(val[k2], str) and val[k2].strip():
                                 return val[k2].strip()
+            # Nested wrappers body/json/data
+            for wrapper in ("body", "json", "data"):
+                if wrapper in tenant_id and isinstance(tenant_id[wrapper], dict):
+                    inner = tenant_id[wrapper]
+                    for key in ("tenant_id", "tenantId"):
+                        if key in inner and isinstance(inner[key], str) and inner[key].strip():
+                            return inner[key].strip()
+                    # business fallback inside wrapper
+                    for bkey in ("business", "Business"):
+                        if bkey in inner and isinstance(inner[bkey], dict):
+                            b = inner[bkey]
+                            for k2 in ("tenant_id", "tenantId", "id"):
+                                if k2 in b and isinstance(b[k2], str) and b[k2].strip():
+                                    # do not return "heshly" if it's a hardcoded default and no real tenant
+                                    # but allow it if explicitly set - caller decides
+                                    return b[k2].strip()
+            # business fallback at top level
+            for bkey in ("business", "Business"):
+                if bkey in tenant_id and isinstance(tenant_id[bkey], dict):
+                    b = tenant_id[bkey]
+                    for k2 in ("tenant_id", "tenantId", "id"):
+                        if k2 in b and isinstance(b[k2], str) and b[k2].strip():
+                            return b[k2].strip()
+            # Recurse one level for body/json containing tenant_id
+            for key in ("body", "json"):
+                if key in tenant_id and isinstance(tenant_id[key], dict):
+                    for k2 in ("tenant_id", "tenantId"):
+                        if k2 in tenant_id[key] and isinstance(tenant_id[key][k2], str) and tenant_id[key][k2].strip():
+                            return tenant_id[key][k2].strip()
             return None
         if isinstance(tenant_id, str):
-            # Handle JSON string
             parsed = _parse_json_if_string(tenant_id)
             if isinstance(parsed, dict):
                 return self._extract_tenant_id(parsed)
@@ -63,7 +96,7 @@ class TenantContext:
         extracted = self._extract_tenant_id(tenant_id)
         if not extracted:
             raise ValueError(
-                "tenant_id is required and must be non-empty. Check phone_number_id -> tenant mapping and webhook tenant_id propagation. Ensure n8n Workflow Inputs include tenant_id and parent Execute Workflow maps it correctly."
+                "tenant_id is required and must be non-empty. Check phone_number_id -> tenant mapping and webhook tenant_id propagation. Ensure n8n Workflow Inputs include tenant_id and parent Execute Workflow maps it correctly. Do not default to 'heshly'."
             )
 
         _current_tenant.set(extracted)
@@ -112,7 +145,7 @@ class TenantContext:
 
     def set_from_payload(self, payload: Any) -> str:
         """
-        Extract tenant_id from n8n payload that may be nested under body/json
+        Extract tenant_id from n8n payload that may be nested under body/json/data/business
         or be a JSON string. Sets context and returns tenant_id.
         """
         if isinstance(payload, dict) or isinstance(payload, str):
@@ -123,12 +156,29 @@ class TenantContext:
                     if key in data and isinstance(data[key], str) and data[key].strip():
                         self.set(data[key])
                         return self.require()
-                # Try nested body/json
+                # Try nested body/json/data
                 for wrapper in ("body", "json", "data"):
                     if wrapper in data and isinstance(data[wrapper], dict):
+                        inner = data[wrapper]
                         for key in ("tenant_id", "tenantId"):
-                            if key in data[wrapper] and isinstance(data[wrapper][key], str) and data[wrapper][key].strip():
-                                self.set(data[wrapper][key])
+                            if key in inner and isinstance(inner[key], str) and inner[key].strip():
+                                self.set(inner[key])
+                                return self.require()
+                        # business fallback
+                        for bkey in ("business", "Business"):
+                            if bkey in inner and isinstance(inner[bkey], dict):
+                                b = inner[bkey]
+                                for k2 in ("tenant_id", "tenantId", "id"):
+                                    if k2 in b and isinstance(b[k2], str) and b[k2].strip():
+                                        self.set(b[k2])
+                                        return self.require()
+                # business fallback top level
+                for bkey in ("business", "Business"):
+                    if bkey in data and isinstance(data[bkey], dict):
+                        b = data[bkey]
+                        for k2 in ("tenant_id", "tenantId", "id"):
+                            if k2 in b and isinstance(b[k2], str) and b[k2].strip():
+                                self.set(b[k2])
                                 return self.require()
         # Fallback to direct
         self.set(payload)

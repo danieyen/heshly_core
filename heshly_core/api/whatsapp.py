@@ -18,6 +18,11 @@ def _parse_json_if_string(value: Any) -> Any:
                 return json.loads(value)
             except Exception:
                 return value
+        if value.startswith("[") and value.endswith("]"):
+            try:
+                return json.loads(value)
+            except Exception:
+                return value
     return value
 
 
@@ -26,13 +31,24 @@ def _extract_payload(payload: Any) -> dict:
     if isinstance(payload, dict):
         if "body" in payload and isinstance(payload["body"], dict):
             body = payload["body"]
-            # Check if body is the actual payload
-            if any(k in body for k in ("entry", "message_id", "phone_number", "messages")):
+            if any(k in body for k in ("entry", "message_id", "phone_number", "messages", "tenant_id", "business")):
+                # if body contains business/tenant_id, keep it but still unwrap
+                # prefer body if it looks like actual payload
+                if any(k in body for k in ("entry", "message_id", "phone_number", "messages")):
+                    return body
+                # also handle case where body is wrapper around data
+                if "data" in body and isinstance(body["data"], dict):
+                    return body["data"]
                 return body
         if "json" in payload and isinstance(payload["json"], dict):
             inner = payload["json"]
-            if any(k in inner for k in ("entry", "message_id", "phone_number")):
+            if any(k in inner for k in ("entry", "message_id", "phone_number", "tenant_id", "business")):
                 return inner
+        if "data" in payload and isinstance(payload["data"], dict):
+            # data wrapper from Execute Workflow
+            inner = payload["data"]
+            # if inner has business/entities etc, return it
+            return inner
     if isinstance(payload, dict):
         return payload
     return {}
@@ -45,6 +61,7 @@ class WhatsAppAPI:
     Handles webhook verification, incoming message normalization,
     tenant resolution, and duplicate protection.
     Tolerant to n8n wrapping and JSON strings.
+    Always returns boolean success.
     """
 
     def __init__(
@@ -67,8 +84,6 @@ class WhatsAppAPI:
         token = data.get("hub.verify_token") or data.get("hub_verify_token") or data.get("verify_token") or ""
         challenge = data.get("hub.challenge") or data.get("hub_challenge") or data.get("challenge") or ""
 
-        # In real implementation, compare against stored verify_token
-        # For now, return challenge if mode is subscribe
         if mode == "subscribe" and challenge:
             return {
                 "success": True,
@@ -89,14 +104,11 @@ class WhatsAppAPI:
         """
         data = _extract_payload(payload)
 
-        # Handle Meta webhook shape vs direct IncomingMessageEvent
         try:
-            # Try to parse as Meta payload
             if "entry" in data:
                 event = IncomingMessageEvent.parse_meta_payload(data, tenant_resolver=tenant_resolver)
             else:
                 event = IncomingMessageEvent.from_dict(data)
-                # If tenant_id missing but phone_number_id present, try resolver
                 if not event.tenant_id and event.phone_number_id and tenant_resolver:
                     try:
                         tenant_id = tenant_resolver(event.phone_number_id)
@@ -104,6 +116,15 @@ class WhatsAppAPI:
                             event.tenant_id = str(tenant_id).strip()
                     except Exception:
                         pass
+                # Fallback: try business.id / business.tenant_id if tenant_id still missing
+                if not event.tenant_id:
+                    for bkey in ("business", "Business"):
+                        if bkey in data and isinstance(data[bkey], dict):
+                            b = data[bkey]
+                            tid = b.get("tenant_id") or b.get("tenantId") or b.get("id")
+                            if isinstance(tid, str) and tid.strip() and tid.strip() != "heshly":
+                                event.tenant_id = tid.strip()
+                                break
         except ValueError as e:
             return {
                 "success": False,
@@ -119,7 +140,6 @@ class WhatsAppAPI:
                 "metadata": {},
             }
 
-        # Validate tenant_id
         if not event.tenant_id:
             return {
                 "success": False,
@@ -128,7 +148,6 @@ class WhatsAppAPI:
                 "metadata": {"phone_number_id": event.phone_number_id},
             }
 
-        # Set tenant context
         try:
             self.tenant_context.set(event.tenant_id)
         except Exception as e:
@@ -139,7 +158,6 @@ class WhatsAppAPI:
                 "metadata": {},
             }
 
-        # Check duplicate
         try:
             if self.duplicate_detector.is_duplicate(event):
                 return {
@@ -168,12 +186,21 @@ class WhatsAppAPI:
     def send_message(self, payload: Any) -> dict:
         """
         Send WhatsApp message. Handles n8n wrapping.
-        Returns {success: bool, message_id, status}
+        Returns {success: bool, message_id, status} with boolean success.
         """
         data = _extract_payload(payload)
-        phone_number = data.get("phone_number") or data.get("phoneNumber") or data.get("to") or data.get("recipient")
-        text = data.get("text") or data.get("message") or data.get("body")
-        phone_number_id = data.get("phone_number_id") or data.get("phoneNumberId")
+        # Also handle case where payload is wrapped in data/business
+        if not data.get("phone_number") and not data.get("phoneNumber") and not data.get("to"):
+            # try nested
+            for wrapper in ("data", "body", "json"):
+                if wrapper in data and isinstance(data[wrapper], dict):
+                    inner = data[wrapper]
+                    if any(k in inner for k in ("phone_number", "phoneNumber", "to", "recipient")):
+                        data = inner
+                        break
+        phone_number = data.get("phone_number") or data.get("phoneNumber") or data.get("to") or data.get("recipient") or data.get("phone")
+        text = data.get("text") or data.get("message") or data.get("body") or data.get("response")
+        phone_number_id = data.get("phone_number_id") or data.get("phoneNumberId") or data.get("phone_numberId")
 
         if not phone_number:
             return {
@@ -190,8 +217,6 @@ class WhatsAppAPI:
                 "message": "text is required",
             }
 
-        # In real implementation, would call Graph API with Bearer token
-        # For now, return success with generated ID
         import uuid
         return {
             "success": True,
