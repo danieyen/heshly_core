@@ -416,7 +416,7 @@
           288
         ],
         "parameters": {
-          "jsCode": "const action = $input.first().json || {};\nconst original = $(\"Set — Normalize Action Input\").item.json || {};\n\nlet response = action.message || action.response || original.response || \"\";\n\nconst actionName = String(\n  action.action || action.next_action || original.next_action || \"\"\n).toUpperCase();\n\nconst available =\n  action.available === true ||\n  String(action.available).toLowerCase() === \"true\";\n\nconst unavailable =\n  action.available === false ||\n  String(action.available).toLowerCase() === \"false\";\n\nif (!response && actionName === \"CHECK_AVAILABILITY\") {\n  if (available && Array.isArray(action.slots) && action.slots.length) {\n    response = `The requested service is available. Available times: ${action.slots.join(\", \")}`;\n  } else if (unavailable) {\n    response = \"Unfortunately, that time is not available.\";\n  }\n}\n\nif (!response && actionName === \"BOOK_APPOINTMENT\") {\n  if (action.success === true || String(action.success).toLowerCase() === \"true\") {\n    response = action.message || \"Your appointment has been booked successfully.\";\n  } else if (action.success === false || String(action.success).toLowerCase() === \"false\") {\n    response = action.message || \"Sorry, we could not book your appointment. Please try another time.\";\n  }\n}\n\nif (!response && actionName === \"UPDATE_LEAD_CUSTOMER\") {\n  if (action.success === true || String(action.success).toLowerCase() === \"true\") {\n    response = action.message || \"Your details have been updated successfully.\";\n  }\n}\n\nreturn [{\n  json: {\n    business: original.business || {},\n    customer: original.customer || {},\n    lead: original.lead || {},\n    conversation: original.conversation || {},\n    response,\n    intent: original.intent || \"\",\n    next_action: original.next_action || action.next_action || action.action || \"OTHER\",\n    phone_number: original.phone_number || \"\",\n    phone_number_id: original.phone_number_id || \"\",\n    tenant_id: original.tenant_id || original.business?.tenant_id || original.business?.id || \"\",\n    action_result: action\n  }\n}];"
+          "jsCode": "const action = $input.first().json || {};\nconst original = $(\"Set — Normalize Action Input\").item.json || {};\n\nlet response = action.message || action.response || original.response || \"\";\n\nconst actionName = String(\n  action.action || action.next_action || original.next_action || \"\"\n).toUpperCase();\n\nconst available =\n  action.available === true ||\n  String(action.available).toLowerCase() === \"true\";\n\nconst unavailable =\n  action.available === false ||\n  String(action.available).toLowerCase() === \"false\";\n\nif (!response && actionName === \"CHECK_AVAILABILITY\") {\n  if (available && Array.isArray(action.slots) && action.slots.length) {\n    response = `The requested service is available. Available times: ${action.slots.join(\", \")}`;\n  } else if (unavailable) {\n    response = \"Unfortunately, that time is not available.\";\n  }\n}\n\nif (!response && actionName === \"BOOK_APPOINTMENT\") {\n  if (action.success === true || String(action.success).toLowerCase() === \"true\") {\n    response = action.message || \"Your appointment has been booked successfully.\";\n  } else if (action.success === false || String(action.success).toLowerCase() === \"false\") {\n    response = action.message || \"Sorry, we could not book your appointment. Please try another time.\";\n  }\n}\n\nif (!response && actionName === \"UPDATE_LEAD_CUSTOMER\") {\n  if (action.success === true || String(action.success).toLowerCase() === \"true\") {\n    response = action.message || \"Your details have been updated successfully.\";\n  }\n}\n\nconst appointment_booked = !!(action.success === true && action.appointment_id);\nconst appointment_id = action.appointment_id || null;\nconst appointment_conversion = appointment_id ? { appointment_id, service: action.service || original.service || \"\", scheduled_time: action.scheduled_time || null } : null;\nconst conversion_outcome = appointment_booked ? \"appointment_booked\" : \"\";\n\nreturn [{\n  json: {\n    business: original.business || {},\n    customer: original.customer || {},\n    lead: original.lead || {},\n    conversation: original.conversation || {},\n    response,\n    intent: original.intent || \"\",\n    next_action: original.next_action || action.next_action || action.action || \"OTHER\",\n    phone_number: original.phone_number || \"\",\n    phone_number_id: original.phone_number_id || \"\",\n    tenant_id: original.tenant_id || original.business?.tenant_id || original.business?.id || \"\",\n    appointment_booked,\n    appointment_id,\n    appointment_conversion,\n    conversion_outcome,\n    action_result: action\n  }\n}];"
         },
         "typeVersion": 2
       },
@@ -1671,6 +1671,30 @@
                 "name": "tenant_id",
                 "type": "string",
                 "value": "={{ ($json.data?.tenant_id ?? $json.body?.tenant_id ?? $json.tenant_id ?? $json.data?.business?.tenant_id ?? $json.data?.business?.id ?? $json.business?.tenant_id ?? $json.business?.id ?? '') }}"
+              },
+              {
+                "id": "wf4-appointment-booked",
+                "name": "appointment_booked",
+                "type": "boolean",
+                "value": "={{ ($json.data?.appointment_booked ?? $json.body?.appointment_booked ?? $json.appointment_booked ?? false) }}"
+              },
+              {
+                "id": "wf4-appointment-id",
+                "name": "appointment_id",
+                "type": "string",
+                "value": "={{ ($json.data?.appointment_id ?? $json.body?.appointment_id ?? $json.appointment_id ?? '') }}"
+              },
+              {
+                "id": "wf4-appointment-conversion",
+                "name": "appointment_conversion",
+                "type": "object",
+                "value": "={{ ($json.data?.appointment_conversion ?? $json.body?.appointment_conversion ?? $json.appointment_conversion ?? null) }}"
+              },
+              {
+                "id": "wf4-conversion-outcome",
+                "name": "conversion_outcome",
+                "type": "string",
+                "value": "={{ ($json.data?.conversion_outcome ?? $json.body?.conversion_outcome ?? $json.conversion_outcome ?? '') }}"
               }
             ]
           }
@@ -1824,6 +1848,30 @@
                 "name": "conversation_id",
                 "type": "string",
                 "value": "={{ $json.message?.conversation_id ?? $json.conversation_id ?? '' }}"
+              },
+              {
+                "id": "wf4-success-appointment-booked",
+                "name": "appointment_booked",
+                "type": "boolean",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.appointment_booked }}"
+              },
+              {
+                "id": "wf4-success-appointment-id",
+                "name": "appointment_id",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.appointment_id }}"
+              },
+              {
+                "id": "wf4-success-appointment-conversion",
+                "name": "appointment_conversion",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.appointment_conversion }}"
+              },
+              {
+                "id": "wf4-success-conversion-outcome",
+                "name": "conversion_outcome",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.conversion_outcome }}"
               }
             ]
           }
@@ -1919,6 +1967,30 @@
                 "name": "error",
                 "type": "string",
                 "value": "={{ $json.message?.error || $json.error || 'WhatsApp send failed' }}"
+              },
+              {
+                "id": "wf4-failed-appointment-booked",
+                "name": "appointment_booked",
+                "type": "boolean",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.appointment_booked }}"
+              },
+              {
+                "id": "wf4-failed-appointment-id",
+                "name": "appointment_id",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.appointment_id }}"
+              },
+              {
+                "id": "wf4-failed-appointment-conversion",
+                "name": "appointment_conversion",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.appointment_conversion }}"
+              },
+              {
+                "id": "wf4-failed-conversion-outcome",
+                "name": "conversion_outcome",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.conversion_outcome }}"
               }
             ]
           }
@@ -2175,6 +2247,18 @@
                 "name": "conversion_outcome",
                 "type": "string",
                 "value": "={{ $json.data?.conversion_outcome || $json.body?.conversion_outcome || $json.conversion_outcome || \"\" }}"
+              },
+              {
+                "id": "analytics-appointment-id",
+                "name": "appointment_id",
+                "type": "string",
+                "value": "={{ $json.data?.appointment_id || $json.body?.appointment_id || $json.appointment_id || $json.data?.appointment_conversion?.appointment_id || $json.body?.appointment_conversion?.appointment_id || $json.appointment_conversion?.appointment_id || '' }}"
+              },
+              {
+                "id": "analytics-conversion-id",
+                "name": "conversion_id",
+                "type": "string",
+                "value": "={{ $json.data?.conversion_id || $json.body?.conversion_id || $json.conversion_id || '' }}"
               }
             ]
           }
