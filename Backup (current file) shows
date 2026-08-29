@@ -1,0 +1,3 @@
+"leftValue": "={{ String($json.message?.available ?? $json.available) }}",
+"rightValue": "true" // and "false"
+"options": { "fallbackOutput": "unavailable" }
