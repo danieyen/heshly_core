@@ -1,0 +1,2 @@
+POST https://erp.heshly.com/api/method/heshly_core.api.whatsapp.resolve_tenant
+jsonBody = {{ JSON.stringify({ phone_number_id: $json.phone_number_id }) }}
