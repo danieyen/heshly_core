@@ -145,7 +145,8 @@ def fix_wf3_prepare(workflow):
     return False
 
 def prepare_update_payload(workflow):
-    # n8n PUT expects workflow without id/versionId/createdAt/updatedAt
+    # n8n PUT /workflows/{id} rejects read-only field "active" (400: request/body/active is read-only)
+    # Do NOT include "active" in PUT payload. Preserve active state separately and use POST /workflows/{id}/activate if needed.
     payload = {
         "name": workflow["name"],
         "nodes": workflow["nodes"],
@@ -154,9 +155,6 @@ def prepare_update_payload(workflow):
         "staticData": workflow.get("staticData"),
         "pinData": workflow.get("pinData", {}),
     }
-    # Keep active flag if present
-    if "active" in workflow:
-        payload["active"] = workflow["active"]
     return payload
 
 def main():
@@ -224,29 +222,31 @@ def main():
         print("\n=== LIVE AFTER: DRY-RUN (no change) ===")
         return
 
-    # Deploy via PUT
+    # Deploy via PUT - preserve active state separately (PUT rejects read-only "active")
     if changed31:
+        was_active31 = wf31_live.get("active") is True
         payload = prepare_update_payload(wf31_live)
         res = api_put(f"/workflows/{WF31_ID}", payload)
         print(f"[DEPLOY] WF3/1 updated versionId {wf31_live.get('versionId')} -> {res.get('versionId', res.get('data', {}).get('versionId'))}")
-        # Ensure active
-        if not res.get("active", True):
+        if was_active31 and not res.get("active"):
             api_post(f"/workflows/{WF31_ID}/activate")
             print(f"[ACTIVATE] WF3/1 activated")
 
     if changed4:
+        was_active4 = wf4_live.get("active") is True
         payload = prepare_update_payload(wf4_live)
         res = api_put(f"/workflows/{WF4_ID}", payload)
         print(f"[DEPLOY] WF4 updated versionId {wf4_live.get('versionId')} -> {res.get('versionId', res.get('data', {}).get('versionId'))}")
-        if not res.get("active", True):
+        if was_active4 and not res.get("active"):
             api_post(f"/workflows/{WF4_ID}/activate")
             print(f"[ACTIVATE] WF4 activated")
 
     if changed3:
+        was_active3 = wf3_live.get("active") is True
         payload = prepare_update_payload(wf3_live)
         res = api_put(f"/workflows/{WF3_ID}", payload)
         print(f"[DEPLOY] WF3 updated versionId {wf3_live.get('versionId')} -> {res.get('versionId', res.get('data', {}).get('versionId'))}")
-        if not res.get("active", True):
+        if was_active3 and not res.get("active"):
             api_post(f"/workflows/{WF3_ID}/activate")
             print(f"[ACTIVATE] WF3 activated")
 
