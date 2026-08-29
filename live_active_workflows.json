@@ -1,15 +1,2898 @@
-WF1 Normalize Payload → Resolve Tenant (phone_number_id) → Normalize Tenant Result (tenant_id/business_id) → Find/Create Lead (phone, full_name, tenant_id) → Build CRM Context (lead.id, customer.id, conversation_id=whatsapp:tenant:phone) → Create/Get Conversation (conversation_id, customer_id, tenant_id) → Get Conversation History (turns) → Get Business Knowledge (tenant_id) → Build AI Payload {business{id,tenant_id}, customer, lead, conversation{id}, conversation_history, message, business_knowledge, tenant_id, business_id, phone_number, phone_number_id}
-  ↓ ExecuteWorkflow (11 fields)
-WF2 Normalize AI Input (tolerant $json.data/body) → AI Agent (JSON.stringify full context) → Normalize AI Output {+intent,entities,next_action,response,confidence} + passthrough tenant/phone/history
-  ↓ ExecuteWorkflow data=$json
-WF3 Normalize Action Input (tolerant, uppercases next_action) → Switch (CHECK_AVAILABILITY|BOOK_APPOINTMENT|UPDATE_LEAD_CUSTOMER|OTHER fallback→other)
-  ├─ WF3/1: {Business,Customer,Entities,next_action} → HTTP check_availability {service, preferred_date: Entities.date[0:10], duration_minutes, tenant_id: Business.tenant_id|id} → Switch String(available) → Return {success,action,available,slots}
-  ├─ WF3/2: {business,customer,lead,service,preferred_date/time,duration,tenant_id} → HTTP book_appointment {customer_name, customer_phone, service, scheduled_time, duration, tenant_id} → Return {success,action,status}
-  ├─ WF3/3: {Business,Customer,Lead,Entities,tenant_id,lead_id,full_name,phone,email} → HTTP update_lead {lead_id,full_name,phone,email,tenant_id} → Return {success,action}
-  └─ WF3/4: {business,customer,lead,conversation,tenant_id} → Return {success,action:OTHER}
-  ↓ Prepare WhatsApp Response (merges action_result + original response/intent/next_action/phone) → {business,customer,lead,conversation,response,intent,next_action,phone_number,phone_number_id}
-  ↓ ExecuteWorkflow data=$json
-WF4 Normalize Response Input (tolerant) → HTTP send_message {phone_number, message: response, phone_number_id} → IF message?.success ?? success → Successful/Failed Result (preserves business/customer/lead/conversation/tenant) → ExecuteWorkflow data=$json
-  ↓
-WF5 Normalize Analytics Input (tolerant $json.data/body) → Record AI Interaction {conversation_id, tenant_id, intent, confidence, response, next_action} → Record AI Response Metrics → Record Conversation Outcome → IF appointment_conversion/appointment_booked/conversion_outcome isNotEmpty → Record Attribution {conversation_id, tenant_id, customer_id, lead_id, intent, ai_interaction_id} → Update AI Analytics {tenant_id, conversation_id, customer_id, lead_id, intent, confidence, ai_response, next_action, appointment_booked, timestamp}
-WF6: Schedule 15m → Get Pending Follow-ups → Process Follow-ups → Get Stale Conversations → Handle Stale Conversations (independent, no tenant leak)
+[
+  {
+    "id": "heshly-ai-action-booking-v1",
+    "name": "Workflow 3 — AI Action / Booking",
+    "nodes": [
+      {
+        "id": "4b13dd31-9d8b-462f-8141-f9e21324a208",
+        "name": "Set — Normalize Action Input",
+        "type": "n8n-nodes-base.set",
+        "position": [
+          224,
+          288
+        ],
+        "parameters": {
+          "options": {},
+          "assignments": {
+            "assignments": [
+              {
+                "id": "next_action",
+                "name": "next_action",
+                "type": "string",
+                "value": "={{ (($json.data?.action || $json.body?.data?.action || $json.body?.action || $json.action || $json.data?.next_action || $json.next_action || \"\") + \"\").toUpperCase() }}"
+              },
+              {
+                "id": "action",
+                "name": "action",
+                "type": "string",
+                "value": "={{ $json.data?.action || $json.body?.data?.action || $json.body?.action || $json.action || $json.data?.next_action || $json.next_action || \"\" }}"
+              },
+              {
+                "id": "service",
+                "name": "service",
+                "type": "string",
+                "value": "={{ $json.data?.entities?.service || $json.body?.data?.entities?.service || $json.entities?.service || $json.data?.service || $json.body?.data?.service || $json.body?.service || $json.service || \"\" }}"
+              },
+              {
+                "id": "date",
+                "name": "date",
+                "type": "string",
+                "value": "={{ $json.data?.entities?.date || $json.body?.data?.entities?.date || $json.entities?.date || $json.data?.date || $json.body?.data?.date || $json.body?.date || $json.date || \"\" }}"
+              },
+              {
+                "id": "tenant_id",
+                "name": "tenant_id",
+                "type": "string",
+                "value": "={{ $json.data?.tenant_id || $json.body?.data?.tenant_id || $json.tenant_id || $json.data?.business?.tenant_id || $json.data?.business?.id || $json.business?.tenant_id || $json.business?.id || $json.body?.data?.business?.tenant_id || $json.body?.data?.business?.id || $json.body?.business?.tenant_id || $json.body?.business?.id || \"\" }}"
+              },
+              {
+                "id": "entities",
+                "name": "entities",
+                "type": "object",
+                "value": "={{ $json.data?.entities || $json.body?.data?.entities || $json.entities || { service: ($json.data?.service || $json.service || \"\"), date: ($json.data?.date || $json.date || \"\") } }}"
+              },
+              {
+                "id": "business",
+                "name": "business",
+                "type": "object",
+                "value": "={{ $json.data?.business || $json.body?.data?.business || $json.body?.business || $json.business || {} }}"
+              },
+              {
+                "id": "customer",
+                "name": "customer",
+                "type": "object",
+                "value": "={{ $json.data?.customer || $json.body?.data?.customer || $json.body?.customer || $json.customer || {} }}"
+              },
+              {
+                "id": "lead",
+                "name": "lead",
+                "type": "object",
+                "value": "={{ $json.data?.lead || $json.body?.data?.lead || $json.body?.lead || $json.lead || {} }}"
+              },
+              {
+                "id": "wf3-response",
+                "name": "response",
+                "type": "string",
+                "value": "={{ $json.data?.response || $json.body?.response || $json.response || \"\" }}"
+              },
+              {
+                "id": "wf3-intent",
+                "name": "intent",
+                "type": "string",
+                "value": "={{ $json.data?.intent || $json.body?.intent || $json.intent || \"\" }}"
+              },
+              {
+                "id": "wf3-confidence",
+                "name": "confidence",
+                "type": "number",
+                "value": "={{ $json.data?.confidence || $json.body?.confidence || $json.confidence || 0 }}"
+              },
+              {
+                "id": "wf3-conversation",
+                "name": "conversation",
+                "type": "object",
+                "value": "={{ $json.data?.conversation || $json.body?.conversation || $json.conversation || {} }}"
+              },
+              {
+                "id": "wf3-phone",
+                "name": "phone_number",
+                "type": "string",
+                "value": "={{ $json.data?.phone_number || $json.body?.phone_number || $json.phone_number || \"\" }}"
+              },
+              {
+                "id": "wf3-phone-id",
+                "name": "phone_number_id",
+                "type": "string",
+                "value": "={{ $json.data?.phone_number_id || $json.body?.phone_number_id || $json.phone_number_id || \"\" }}"
+              }
+            ]
+          }
+        },
+        "typeVersion": 3.4
+      },
+      {
+        "id": "dbdee639-9391-4f0b-836e-593231bf3358",
+        "name": "Switch — Next Action",
+        "type": "n8n-nodes-base.switch",
+        "position": [
+          448,
+          256
+        ],
+        "parameters": {
+          "rules": {
+            "values": [
+              {
+                "outputKey": "check_availability",
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "leftValue": "",
+                    "caseSensitive": true,
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "switch-check-availability",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ $json.next_action }}",
+                      "rightValue": "CHECK_AVAILABILITY"
+                    }
+                  ]
+                },
+                "renameOutput": true
+              },
+              {
+                "outputKey": "book_appointment",
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "leftValue": "",
+                    "caseSensitive": true,
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "switch-book-appointment",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ $json.next_action }}",
+                      "rightValue": "BOOK_APPOINTMENT"
+                    }
+                  ]
+                },
+                "renameOutput": true
+              },
+              {
+                "outputKey": "update_lead_customer",
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "leftValue": "",
+                    "caseSensitive": true,
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "switch-update-lead-customer",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ $json.next_action }}",
+                      "rightValue": "UPDATE_LEAD_CUSTOMER"
+                    }
+                  ]
+                },
+                "renameOutput": true
+              },
+              {
+                "outputKey": "other",
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "leftValue": "",
+                    "caseSensitive": true,
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "switch-other",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ $json.next_action }}",
+                      "rightValue": "OTHER"
+                    }
+                  ]
+                },
+                "renameOutput": true
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "other"
+          }
+        },
+        "typeVersion": 3.2
+      },
+      {
+        "id": "wf3-exec-wf31",
+        "name": "Execute Workflow — WF3/1",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "position": [
+          672,
+          0
+        ],
+        "parameters": {
+          "options": {},
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "8f3c2a91-7d64-4e52-b8a1-91c7f4e62d30",
+            "cachedResultUrl": "/workflow/8f3c2a91-7d64-4e52-b8a1-91c7f4e62d30",
+            "cachedResultName": "WF3/1 — AI Action — Check Availability"
+          },
+          "workflowInputs": {
+            "value": {
+              "data": "={{ {\n  Business: $json.business,\n  Customer: $json.customer,\n  Entities: $json.entities || {\n    service: $json.service,\n    date: $json.date\n  },\n  next_action: $json.next_action\n} }}"
+            },
+            "schema": [
+              {
+                "id": "data",
+                "type": "object",
+                "display": true,
+                "removed": false,
+                "required": false,
+                "displayName": "data",
+                "defaultMatch": false,
+                "canBeUsedToMatch": true
+              }
+            ],
+            "mappingMode": "defineBelow",
+            "matchingColumns": [
+              "data"
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "typeVersion": 1.2
+      },
+      {
+        "id": "execute-wf3-2-book",
+        "name": "Execute Workflow — WF3/2",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "position": [
+          672,
+          192
+        ],
+        "parameters": {
+          "options": {},
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "heshly-ai-action-book-v2",
+            "cachedResultUrl": "/workflow/heshly-ai-action-book-v2",
+            "cachedResultName": "WF3/2 — AI Action — Book Appointment"
+          },
+          "workflowInputs": {
+            "value": {
+              "data": "={{ $json }}"
+            },
+            "schema": [
+              {
+                "id": "data",
+                "type": "object",
+                "display": true,
+                "removed": false,
+                "required": false,
+                "displayName": "data",
+                "defaultMatch": false,
+                "canBeUsedToMatch": true
+              }
+            ],
+            "mappingMode": "defineBelow",
+            "matchingColumns": [
+              "data"
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "typeVersion": 1.2
+      },
+      {
+        "id": "execute-wf3-3-update-crm",
+        "name": "Execute Workflow — WF3/3",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "position": [
+          672,
+          384
+        ],
+        "parameters": {
+          "options": {},
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "heshly-ai-action-update-crm-v1",
+            "cachedResultUrl": "/workflow/heshly-ai-action-update-crm-v1",
+            "cachedResultName": "WF3/3 — AI Action — Update Lead / Customer"
+          },
+          "workflowInputs": {
+            "value": {
+              "data": "={{ $json }}"
+            },
+            "schema": [
+              {
+                "id": "data",
+                "type": "object",
+                "display": true,
+                "removed": false,
+                "required": false,
+                "displayName": "data",
+                "defaultMatch": false,
+                "canBeUsedToMatch": true
+              }
+            ],
+            "mappingMode": "defineBelow",
+            "matchingColumns": [
+              "data"
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "typeVersion": 1.2
+      },
+      {
+        "id": "wf3-exec-wf34",
+        "name": "Execute Workflow — WF3/4",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "position": [
+          672,
+          576
+        ],
+        "parameters": {
+          "options": {},
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "heshly-ai-action-other-v1",
+            "cachedResultUrl": "/workflow/heshly-ai-action-other-v1",
+            "cachedResultName": "WF3/4 — AI Action — Other / Fallback"
+          },
+          "workflowInputs": {
+            "value": {
+              "data": "={{ $json }}"
+            },
+            "schema": [
+              {
+                "id": "data",
+                "type": "object",
+                "display": true,
+                "removed": false,
+                "required": false,
+                "displayName": "data",
+                "defaultMatch": false,
+                "canBeUsedToMatch": true
+              }
+            ],
+            "mappingMode": "defineBelow",
+            "matchingColumns": [
+              "data"
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "typeVersion": 1.2
+      },
+      {
+        "id": "d74550f7-4423-4937-8cde-862a0a8238c6",
+        "name": "Execute Workflow Trigger",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "position": [
+          0,
+          288
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "wf3-prepare-whatsapp-response",
+        "name": "Prepare WhatsApp Response",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          896,
+          288
+        ],
+        "parameters": {
+          "jsCode": "const action = $input.first().json || {};\nconst original = $(\"Set — Normalize Action Input\").item.json || {};\n\nlet response = action.message || action.response || original.response || \"\";\n\nconst actionName = String(\n  action.action || action.next_action || original.next_action || \"\"\n).toUpperCase();\n\nconst available =\n  action.available === true ||\n  String(action.available).toLowerCase() === \"true\";\n\nconst unavailable =\n  action.available === false ||\n  String(action.available).toLowerCase() === \"false\";\n\nif (!response && actionName === \"CHECK_AVAILABILITY\") {\n  if (available && Array.isArray(action.slots) && action.slots.length) {\n    response = `The requested service is available. Available times: ${action.slots.join(\", \")}`;\n  } else if (unavailable) {\n    response = \"Unfortunately, that time is not available.\";\n  }\n}\n\nif (!response && actionName === \"BOOK_APPOINTMENT\") {\n  if (action.success === true || String(action.success).toLowerCase() === \"true\") {\n    response = action.message || \"Your appointment has been booked successfully.\";\n  } else if (action.success === false || String(action.success).toLowerCase() === \"false\") {\n    response = action.message || \"Sorry, we could not book your appointment. Please try another time.\";\n  }\n}\n\nif (!response && actionName === \"UPDATE_LEAD_CUSTOMER\") {\n  if (action.success === true || String(action.success).toLowerCase() === \"true\") {\n    response = action.message || \"Your details have been updated successfully.\";\n  }\n}\n\nreturn [{\n  json: {\n    business: original.business || {},\n    customer: original.customer || {},\n    lead: original.lead || {},\n    conversation: original.conversation || {},\n    response,\n    intent: original.intent || \"\",\n    next_action: original.next_action || action.next_action || action.action || \"OTHER\",\n    phone_number: original.phone_number || \"\",\n    phone_number_id: original.phone_number_id || \"\",\n    action_result: action\n  }\n}];"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "wf3-execute-wf4",
+        "name": "Execute Workflow — WF4 WhatsApp Response",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "position": [
+          1120,
+          288
+        ],
+        "parameters": {
+          "options": {},
+          "workflowId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd"
+          },
+          "workflowInputs": {
+            "value": {
+              "data": "={{ $json }}"
+            },
+            "schema": [
+              {
+                "id": "data",
+                "type": "object",
+                "display": true,
+                "removed": false,
+                "required": false,
+                "displayName": "data",
+                "defaultMatch": false,
+                "canBeUsedToMatch": true
+              }
+            ],
+            "mappingMode": "defineBelow",
+            "matchingColumns": [
+              "data"
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "typeVersion": 1
+      }
+    ],
+    "active": true,
+    "settings": {
+      "binaryMode": "separate",
+      "executionOrder": "v1"
+    },
+    "versionId": "12506b6b-d40b-4d73-b1ae-02ee676192e6",
+    "staticData": null,
+    "connections": {
+      "Switch — Next Action": {
+        "main": [
+          [
+            {
+              "node": "Execute Workflow — WF3/1",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Execute Workflow — WF3/2",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Execute Workflow — WF3/3",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Execute Workflow — WF3/4",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow Trigger": {
+        "main": [
+          [
+            {
+              "node": "Set — Normalize Action Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare WhatsApp Response": {
+        "main": [
+          [
+            {
+              "node": "Execute Workflow — WF4 WhatsApp Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow — WF3/1": {
+        "main": [
+          [
+            {
+              "node": "Prepare WhatsApp Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow — WF3/2": {
+        "main": [
+          [
+            {
+              "node": "Prepare WhatsApp Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow — WF3/3": {
+        "main": [
+          [
+            {
+              "node": "Prepare WhatsApp Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow — WF3/4": {
+        "main": [
+          [
+            {
+              "node": "Prepare WhatsApp Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Set — Normalize Action Input": {
+        "main": [
+          [
+            {
+              "node": "Switch — Next Action",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "heshly-ai-receptionist-v3",
+    "name": "Workflow 2 — AI Receptionist",
+    "nodes": [
+      {
+        "id": "ai-receptionist-incoming-webhook",
+        "name": "Execute Workflow Trigger",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "position": [
+          304,
+          0
+        ],
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "business",
+                "type": "object"
+              },
+              {
+                "name": "customer",
+                "type": "object"
+              },
+              {
+                "name": "lead",
+                "type": "object"
+              },
+              {
+                "name": "conversation",
+                "type": "object"
+              },
+              {
+                "name": "message",
+                "type": "object"
+              },
+              {
+                "name": "business_knowledge",
+                "type": "object"
+              },
+              {
+                "name": "tenant_id"
+              },
+              {
+                "name": "business_id"
+              },
+              {
+                "name": "phone_number"
+              },
+              {
+                "name": "phone_number_id"
+              },
+              {
+                "name": "conversation_history",
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "typeVersion": 1.1
+      },
+      {
+        "id": "normalize-ai-input",
+        "name": "Set — Normalize AI Input",
+        "type": "n8n-nodes-base.set",
+        "position": [
+          528,
+          0
+        ],
+        "parameters": {
+          "options": {},
+          "assignments": {
+            "assignments": [
+              {
+                "id": "business",
+                "name": "business",
+                "type": "object",
+                "value": "={{ $json.data?.business || $json.body?.business || $json.business || {} }}"
+              },
+              {
+                "id": "customer",
+                "name": "customer",
+                "type": "object",
+                "value": "={{ $json.data?.customer || $json.body?.customer || $json.customer || {} }}"
+              },
+              {
+                "id": "lead",
+                "name": "lead",
+                "type": "object",
+                "value": "={{ $json.data?.lead || $json.body?.lead || $json.lead || {} }}"
+              },
+              {
+                "id": "conversation",
+                "name": "conversation",
+                "type": "object",
+                "value": "={{ $json.data?.conversation || $json.body?.conversation || $json.conversation || {} }}"
+              },
+              {
+                "id": "message",
+                "name": "message",
+                "type": "object",
+                "value": "={{ $json.data?.message || $json.body?.message || $json.message || {} }}"
+              },
+              {
+                "id": "business_knowledge",
+                "name": "business_knowledge",
+                "type": "object",
+                "value": "={{ $json.data?.business_knowledge || $json.body?.business_knowledge || $json.business_knowledge || {} }}"
+              },
+              {
+                "id": "tenant_id",
+                "name": "tenant_id",
+                "type": "string",
+                "value": "={{ $json.data?.tenant_id || $json.body?.tenant_id || $json.tenant_id || $json.business?.tenant_id || $json.business?.id || \"\" }}"
+              },
+              {
+                "id": "business_id",
+                "name": "business_id",
+                "type": "string",
+                "value": "={{ $json.data?.business_id || $json.body?.business_id || $json.business_id || $json.business?.id || $json.business?.tenant_id || \"\" }}"
+              },
+              {
+                "id": "phone_number",
+                "name": "phone_number",
+                "type": "string",
+                "value": "={{ $json.data?.phone_number || $json.body?.phone_number || $json.phone_number || $json.message?.phone_number || $json.message?.from || \"\" }}"
+              },
+              {
+                "id": "phone_number_id",
+                "name": "phone_number_id",
+                "type": "string",
+                "value": "={{ $json.data?.phone_number_id || $json.body?.phone_number_id || $json.phone_number_id || $json.message?.phone_number_id || \"\" }}"
+              },
+              {
+                "id": "conversation_history",
+                "name": "conversation_history",
+                "type": "object",
+                "value": "={{ $json.data?.conversation_history || $json.body?.conversation_history || $json.conversation_history || [] }}"
+              }
+            ]
+          }
+        },
+        "typeVersion": 3.4
+      },
+      {
+        "id": "ai-receptionist-agent",
+        "name": "AI Agent — AI Receptionist",
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "position": [
+          752,
+          0
+        ],
+        "parameters": {
+          "text": "={{ JSON.stringify({ business: $json.business, customer: $json.customer, lead: $json.lead, conversation: $json.conversation, conversation_history: $json.conversation_history, message: $json.message, business_knowledge: $json.business_knowledge }) }}",
+          "options": {
+            "systemMessage": "You are the AI Receptionist. Classify the latest customer message and return only structured output. next_action MUST be exactly one of CHECK_AVAILABILITY, BOOK_APPOINTMENT, UPDATE_LEAD_CUSTOMER, or OTHER. Never return REPLY. Use CHECK_AVAILABILITY for questions about whether a service or requested time is available. Use BOOK_APPOINTMENT only when the customer asks to make or confirm a booking. Use UPDATE_LEAD_CUSTOMER only for explicit profile changes. Use OTHER for greetings, general questions, or clarification. Do not ask for a clinic or business name when the supplied business context is sufficient."
+          },
+          "promptType": "define",
+          "hasOutputParser": true
+        },
+        "typeVersion": 3.1
+      },
+      {
+        "id": "openrouter-chat-model",
+        "name": "OpenRouter Chat Model",
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+        "position": [
+          768,
+          224
+        ],
+        "parameters": {
+          "options": {
+            "maxTokens": 2000
+          }
+        },
+        "credentials": {
+          "openRouterApi": {
+            "id": "GcGJq1Iw5o5FTjEN",
+            "name": "OpenRouter account"
+          }
+        },
+        "typeVersion": 1
+      },
+      {
+        "id": "ai-structured-output-parser",
+        "name": "Structured Output Parser",
+        "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+        "position": [
+          896,
+          224
+        ],
+        "parameters": {
+          "schemaType": "manual",
+          "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"intent\": {\n      \"type\": \"string\"\n    },\n    \"entities\": {\n      \"type\": \"object\"\n    },\n    \"next_action\": {\n      \"type\": \"string\"\n    },\n    \"response\": {\n      \"type\": \"string\"\n    },\n    \"confidence\": {\n      \"type\": \"number\",\n      \"minimum\": 0,\n      \"maximum\": 1\n    }\n  },\n  \"required\": [\n    \"intent\",\n    \"entities\",\n    \"next_action\",\n    \"response\",\n    \"confidence\"\n  ]\n}"
+        },
+        "typeVersion": 1.3
+      },
+      {
+        "id": "normalize-ai-output",
+        "name": "Code — Normalize AI Output",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          1104,
+          0
+        ],
+        "parameters": {
+          "jsCode": "\nconst input = $json;\n\nlet ai = input.output ?? input;\n\nif (typeof ai === \"string\") {\n  try {\n    ai = JSON.parse(ai);\n  } catch {\n    ai = {};\n  }\n}\n\nif (ai.output && typeof ai.output === \"object\") {\n  ai = ai.output;\n}\n\nconst intent =\n  typeof ai.intent === \"string\"\n    ? ai.intent.trim()\n    : \"OTHER\";\n\nconst entities =\n  ai.entities && typeof ai.entities === \"object\"\n    ? ai.entities\n    : {};\n\nconst allowed = new Set([\n  \"CHECK_AVAILABILITY\",\n  \"BOOK_APPOINTMENT\",\n  \"UPDATE_LEAD_CUSTOMER\",\n  \"OTHER\"\n]);\n\nconst candidate =\n  typeof ai.next_action === \"string\"\n    ? ai.next_action.trim().toUpperCase()\n    : \"OTHER\";\n\nconst next_action = allowed.has(candidate)\n  ? candidate\n  : \"OTHER\";\n\nconst response =\n  typeof ai.response === \"string\"\n    ? ai.response.trim()\n    : \"I can help with that.\";\n\nconst confidence = Math.max(\n  0,\n  Math.min(\n    1,\n    Number.isFinite(Number(ai.confidence))\n      ? Number(ai.confidence)\n      : 0\n  )\n);\n\nconst original = $(\"Set — Normalize AI Input\").item.json;\n\nreturn [{\n  json: {\n    business: original.business || {},\n    customer: original.customer || {},\n    lead: original.lead || {},\n    conversation: original.conversation || {},\n    message: original.message || {},\n    business_knowledge: original.business_knowledge || {},\n\n    phone_number:\n      original.phone_number ||\n      original.message?.phone_number ||\n      original.message?.from ||\n      \"\",\n\n    phone_number_id:\n      original.phone_number_id ||\n      original.message?.phone_number_id ||\n      \"\",\n\n    tenant_id: original.tenant_id || original.business?.tenant_id || original.business?.id || \"\",\n    business_id: original.business_id || original.business?.id || \"\",\n    conversation_history: original.conversation_history || [],\n\n    intent,\n    entities,\n    next_action,\n    response,\n    confidence\n  }\n}];\n"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "wf2-exec-wf3-parent",
+        "name": "Execute Workflow — WF3 Parent",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "position": [
+          1328,
+          0
+        ],
+        "parameters": {
+          "options": {},
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "heshly-ai-action-booking-v1",
+            "cachedResultUrl": "/workflow/heshly-ai-action-booking-v1",
+            "cachedResultName": "Workflow 3 — AI Action / Booking"
+          },
+          "workflowInputs": {
+            "value": {
+              "data": "={{ $json }}"
+            },
+            "schema": [
+              {
+                "id": "data",
+                "type": "object",
+                "display": true,
+                "removed": false,
+                "required": false,
+                "displayName": "data",
+                "defaultMatch": false,
+                "canBeUsedToMatch": true
+              }
+            ],
+            "mappingMode": "defineBelow",
+            "matchingColumns": [
+              "data"
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "typeVersion": 1.2
+      }
+    ],
+    "active": true,
+    "settings": {
+      "binaryMode": "separate",
+      "executionOrder": "v1"
+    },
+    "versionId": "74e679e3-faa2-4af2-b245-bedc9eec0c80",
+    "staticData": null,
+    "connections": {
+      "OpenRouter Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Agent — AI Receptionist",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow Trigger": {
+        "main": [
+          [
+            {
+              "node": "Set — Normalize AI Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Structured Output Parser": {
+        "ai_outputParser": [
+          [
+            {
+              "node": "AI Agent — AI Receptionist",
+              "type": "ai_outputParser",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Set — Normalize AI Input": {
+        "main": [
+          [
+            {
+              "node": "AI Agent — AI Receptionist",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Agent — AI Receptionist": {
+        "main": [
+          [
+            {
+              "node": "Code — Normalize AI Output",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Code — Normalize AI Output": {
+        "main": [
+          [
+            {
+              "node": "Execute Workflow — WF3 Parent",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "heshly-ai-action-other-v1",
+    "name": "WF3/4 — AI Action — Other / Fallback",
+    "nodes": [
+      {
+        "id": "wf34-trigger",
+        "name": "Execute Workflow Trigger — WF3/4",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "position": [
+          304,
+          304
+        ],
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "data",
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "typeVersion": 1.1
+      },
+      {
+        "id": "wf34-normalize",
+        "name": "Set — Normalize Fallback Input",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          528,
+          304
+        ],
+        "parameters": {
+          "jsCode": "const envelope = $input.first().json || {};\nconst input = envelope.data || envelope;\nconst body = input.body && typeof input.body === 'object' ? input.body : input;\nconst business = body.business || body.Business || {};\n\nreturn [{\n  json: {\n    next_action: body.next_action || body['Next Action'] || 'OTHER',\n    business,\n    customer: body.customer || body.Customer || {},\n    lead: body.lead || body.Lead || {},\n    conversation: body.conversation || body.Conversation || {},\n    message: body.message || body.Message || {},\n    tenant_id: body.tenant_id || business.id || business.tenant_id || ''\n  }\n}];"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "wf34-result",
+        "name": "Set — Fallback Result",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          752,
+          304
+        ],
+        "parameters": {
+          "jsCode": "const input = $input.first().json || {};\n\nreturn [{\n  json: {\n    success: true,\n    action: 'OTHER',\n    status: 'FALLBACK',\n    next_action: 'OTHER',\n    message: 'Action received but no specific workflow is configured.',\n    business: input.business || {},\n    customer: input.customer || {},\n    lead: input.lead || {},\n    conversation: input.conversation || {},\n    tenant_id: input.tenant_id || ''\n  }\n}];"
+        },
+        "typeVersion": 2
+      }
+    ],
+    "active": true,
+    "settings": {
+      "binaryMode": "separate",
+      "executionOrder": "v1"
+    },
+    "versionId": "63508df2-2729-46e3-b4e9-eb25ebcbd9df",
+    "staticData": null,
+    "connections": {
+      "Set — Normalize Fallback Input": {
+        "main": [
+          [
+            {
+              "node": "Set — Fallback Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow Trigger — WF3/4": {
+        "main": [
+          [
+            {
+              "node": "Set — Normalize Fallback Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "9db30e75-031f-4a83-83d6-2face7441ba0",
+    "name": "WF1 — WhatsApp Incoming / CRM Intake v1",
+    "nodes": [
+      {
+        "id": "wf1-webhook",
+        "name": "WhatsApp Incoming",
+        "type": "n8n-nodes-base.webhook",
+        "position": [
+          208,
+          -416
+        ],
+        "webhookId": "heshly-whatsapp-incoming-v1",
+        "parameters": {
+          "path": "heshly/whatsapp/incoming",
+          "options": {},
+          "httpMethod": "POST"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "wf1-normalize",
+        "name": "Normalize Payload",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          432,
+          -416
+        ],
+        "parameters": {
+          "jsCode": "const input = $input.first().json || {};\n\nconst body = input.body && typeof input.body === 'object'\n  ? input.body\n  : input;\n\nconst value = body.entry?.[0]?.changes?.[0]?.value || body.value || body;\nconst message = value.messages?.[0] || body.message || {};\nconst contact = value.contacts?.[0] || body.contact || {};\n\nconst phone_number_id =\n  value.metadata?.phone_number_id ||\n  body.phone_number_id ||\n  body.phoneNumberId ||\n  '';\n\nconst phone_number =\n  message.from ||\n  body.phone_number ||\n  body.from ||\n  contact.wa_id ||\n  '';\n\nlet message_text = '';\n\nif (message.text?.body) {\n  message_text = message.text.body;\n} else if (message.button?.text) {\n  message_text = message.button.text;\n} else if (message.interactive?.button_reply?.title) {\n  message_text = message.interactive.button_reply.title;\n} else if (message.interactive?.list_reply?.title) {\n  message_text = message.interactive.list_reply.title;\n} else if (body.message?.text) {\n  message_text = body.message.text;\n} else if (typeof body.message === 'string') {\n  message_text = body.message;\n}\n\nconst customer_name =\n  contact.profile?.name ||\n  body.customer_name ||\n  body.name ||\n  phone_number ||\n  'Customer';\n\nreturn [{\n  json: {\n    raw: body,\n    phone_number_id,\n    phone_number,\n    customer_name,\n    message: {\n      id: message.id || body.message_id || '',\n      type: message.type || 'text',\n      text: message_text,\n      timestamp: message.timestamp || body.timestamp || new Date().toISOString()\n    }\n  }\n}];"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "wf1-resolve-tenant",
+        "name": "Resolve Tenant",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          656,
+          -416
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.whatsapp.resolve_tenant",
+          "method": "POST",
+          "options": {},
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ phone_number_id: $json.phone_number_id }) }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "wf1-tenant-output",
+        "name": "Normalize Tenant Result",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          880,
+          -416
+        ],
+        "parameters": {
+          "jsCode": "const input = $('Normalize Payload').first().json;\nconst result = $input.first().json || {};\n\nconst data = result.message || result;\n\nif (!data.success && !data.tenant_id) {\n  throw new Error('Tenant resolution failed');\n}\n\nreturn [{\n  json: {\n    ...input,\n    tenant_id: data.tenant_id,\n    business_id: data.business_id,\n    resolved_phone_number_id: data.phone_number_id || input.phone_number_id\n  }\n}];"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "wf1-find-create-lead",
+        "name": "Find/Create Lead",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          1104,
+          -416
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.customers.find_or_create_lead",
+          "method": "POST",
+          "options": {},
+          "jsonBody": "={{ JSON.stringify({ phone: $json.phone_number, full_name: $json.customer_name, tenant_id: $json.tenant_id, email: $json.customer_email || null, source: \"whatsapp\" }) }}",
+          "sendBody": true,
+          "sendHeaders": true,
+          "specifyBody": "json",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "wf1-build-crm-context",
+        "name": "Build CRM Context",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          1328,
+          -416
+        ],
+        "parameters": {
+          "jsCode": "\nconst tenant = $('Normalize Tenant Result').first().json;\n\nconst response = $input.first().json || {};\nconst result = response.message || response;\nconst lead = result.lead || {};\n\nif (!lead.id && !lead.lead_id) {\n  throw new Error('Find/Create Lead returned no lead');\n}\n\nconst leadId = lead.id || lead.lead_id;\n\nconst conversationId =\n  `whatsapp:${tenant.tenant_id}:${tenant.phone_number}`;\n\nreturn [{\n  json: {\n    ...tenant,\n\n    lead: {\n      ...lead,\n      id: leadId\n    },\n\n    customer: {\n      id: leadId,\n      name: lead.name || tenant.customer_name,\n      phone: lead.phone || tenant.phone_number,\n      email: lead.email || null\n    },\n\n    conversation_id: conversationId\n  }\n}];\n"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "wf1-create-conversation",
+        "name": "Create/Get Conversation",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          1552,
+          -416
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.conversations.create",
+          "method": "POST",
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          },
+          "sendBody": true,
+          "sendHeaders": true,
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "conversation_id",
+                "value": "={{ $(\"Build CRM Context\").first().json.conversation_id }}"
+              },
+              {
+                "name": "customer_id",
+                "value": "={{ $(\"Build CRM Context\").first().json.customer.id }}"
+              },
+              {
+                "name": "tenant_id",
+                "value": "={{ $(\"Build CRM Context\").first().json.tenant_id }}"
+              }
+            ]
+          },
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "wf1-history",
+        "name": "Get Conversation History",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          1776,
+          -416
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.conversations.get",
+          "method": "POST",
+          "options": {},
+          "sendBody": true,
+          "sendHeaders": true,
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "conversation_id",
+                "value": "={{ $(\"Build CRM Context\").first().json.conversation_id }}"
+              },
+              {
+                "name": "tenant_id",
+                "value": "={{ $(\"Build CRM Context\").first().json.tenant_id }}"
+              }
+            ]
+          },
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "wf1-business-knowledge",
+        "name": "Get Business Knowledge",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          2000,
+          -416
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.ai.get_business_knowledge",
+          "method": "POST",
+          "options": {},
+          "jsonBody": "={{ JSON.stringify({ tenant_id: $('Build CRM Context').first().json.tenant_id }) }}",
+          "sendBody": true,
+          "sendHeaders": true,
+          "specifyBody": "json",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "wf1-ai-payload",
+        "name": "Build AI Payload",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          2224,
+          -416
+        ],
+        "parameters": {
+          "jsCode": "const base = $('Build CRM Context').first().json;\n\nconst historyResponse = $('Get Conversation History').first().json || {};\nconst knowledgeResponse = $('Get Business Knowledge').first().json || {};\n\nconst history = historyResponse.message || historyResponse;\nconst knowledge = knowledgeResponse.message || knowledgeResponse;\n\nreturn [{\n  json: {\n    business: {\n      id: base.business_id,\n      tenant_id: base.tenant_id\n    },\n\n    customer: base.customer,\n    lead: base.lead,\n\n    conversation: {\n      id: base.conversation_id,\n      conversation_id: base.conversation_id\n    },\n\n    conversation_history: history.turns || [],\n\n    message: base.message,\n\n    business_knowledge: knowledge.knowledge || {},\n\n    tenant_id: base.tenant_id,\n    business_id: base.business_id,\n    phone_number_id: base.phone_number_id,\n    phone_number: base.phone_number\n  }\n}];"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "wf1-exec-wf2-receptionist",
+        "name": "Execute Workflow — Workflow 2",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "position": [
+          2448,
+          -416
+        ],
+        "parameters": {
+          "options": {},
+          "workflowId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "heshly-ai-receptionist-v3"
+          },
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "business",
+                "type": "object",
+                "value": "={{ $json.business }}"
+              },
+              {
+                "name": "customer",
+                "type": "object",
+                "value": "={{ $json.customer }}"
+              },
+              {
+                "name": "lead",
+                "type": "object",
+                "value": "={{ $json.lead }}"
+              },
+              {
+                "name": "conversation",
+                "type": "object",
+                "value": "={{ $json.conversation }}"
+              },
+              {
+                "name": "message",
+                "type": "object",
+                "value": "={{ $json.message }}"
+              },
+              {
+                "name": "business_knowledge",
+                "type": "object",
+                "value": "={{ $json.business_knowledge }}"
+              },
+              {
+                "name": "tenant_id",
+                "type": "string",
+                "value": "={{ $json.tenant_id }}"
+              },
+              {
+                "name": "business_id",
+                "type": "string",
+                "value": "={{ $json.business_id }}"
+              },
+              {
+                "name": "phone_number",
+                "type": "string",
+                "value": "={{ $json.phone_number }}"
+              },
+              {
+                "name": "phone_number_id",
+                "type": "string",
+                "value": "={{ $json.phone_number_id }}"
+              },
+              {
+                "name": "conversation_history",
+                "type": "object",
+                "value": "={{ $json.conversation_history }}"
+              }
+            ]
+          }
+        },
+        "typeVersion": 1.2
+      }
+    ],
+    "active": true,
+    "settings": {
+      "binaryMode": "separate",
+      "executionOrder": "v1"
+    },
+    "versionId": "6a765acb-5256-4c1d-9b40-37ad71f3dc8b",
+    "staticData": null,
+    "connections": {
+      "Resolve Tenant": {
+        "main": [
+          [
+            {
+              "node": "Normalize Tenant Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build AI Payload": {
+        "main": [
+          [
+            {
+              "node": "Execute Workflow — Workflow 2",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Find/Create Lead": {
+        "main": [
+          [
+            {
+              "node": "Build CRM Context",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build CRM Context": {
+        "main": [
+          [
+            {
+              "node": "Create/Get Conversation",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Payload": {
+        "main": [
+          [
+            {
+              "node": "Resolve Tenant",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "WhatsApp Incoming": {
+        "main": [
+          [
+            {
+              "node": "Normalize Payload",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Business Knowledge": {
+        "main": [
+          [
+            {
+              "node": "Build AI Payload",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Create/Get Conversation": {
+        "main": [
+          [
+            {
+              "node": "Get Conversation History",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Tenant Result": {
+        "main": [
+          [
+            {
+              "node": "Find/Create Lead",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Conversation History": {
+        "main": [
+          [
+            {
+              "node": "Get Business Knowledge",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "61d65266-2c38-4e41-8b85-b311df0f31ec",
+    "name": "Workflow 6 — Scheduled / Background Processing",
+    "nodes": [
+      {
+        "id": "schedule-trigger-wf6",
+        "name": "Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "position": [
+          208,
+          0
+        ],
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "minutes",
+                "minutesInterval": 15
+              }
+            ]
+          }
+        },
+        "typeVersion": 1.2
+      },
+      {
+        "id": "cad99315-14fe-446f-a84b-ef40d37de1fd",
+        "name": "HTTP Request — Get Pending Follow-ups",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          432,
+          0
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.followups.get_pending",
+          "options": {}
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "66c2f72c-4bd0-49bd-9d2f-c58a60af2a1b",
+        "name": "HTTP Request — Process Follow-ups",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          656,
+          0
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.followups.process_pending",
+          "method": "POST",
+          "options": {},
+          "jsonBody": "={{ JSON.stringify({}) }}",
+          "sendBody": true,
+          "specifyBody": "json"
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "211ad8f7-ba7b-4162-94e4-9f8b55bc78a1",
+        "name": "HTTP Request — Get Stale Conversations",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          880,
+          0
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.conversations.get_stale",
+          "options": {}
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "609d03c4-aa2f-4045-9ab2-5004c966a22e",
+        "name": "HTTP Request — Handle Stale Conversations",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          1104,
+          0
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.conversations.handle_stale",
+          "method": "POST",
+          "options": {},
+          "jsonBody": "={{ JSON.stringify({}) }}",
+          "sendBody": true,
+          "specifyBody": "json"
+        },
+        "typeVersion": 4.2
+      }
+    ],
+    "active": true,
+    "settings": {
+      "binaryMode": "separate",
+      "executionOrder": "v1"
+    },
+    "versionId": "e35a0a7e-952e-4fe8-8e13-3bff69c1ec9d",
+    "staticData": null,
+    "connections": {
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request — Get Pending Follow-ups",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request — Process Follow-ups": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request — Get Stale Conversations",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request — Get Pending Follow-ups": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request — Process Follow-ups",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request — Get Stale Conversations": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request — Handle Stale Conversations",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request — Handle Stale Conversations": {
+        "main": [
+          []
+        ]
+      }
+    }
+  },
+  {
+    "id": "37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd",
+    "name": "Workflow 4 — WhatsApp Response",
+    "nodes": [
+      {
+        "id": "exec-wf-response-trigger",
+        "name": "Execute Workflow Trigger",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "position": [
+          0,
+          0
+        ],
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "data",
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "typeVersion": 1.1
+      },
+      {
+        "id": "normalize-response-input",
+        "name": "Set ??? Normalize Response Input",
+        "type": "n8n-nodes-base.set",
+        "position": [
+          224,
+          0
+        ],
+        "parameters": {
+          "options": {},
+          "assignments": {
+            "assignments": [
+              {
+                "id": "business",
+                "name": "business",
+                "type": "object",
+                "value": "={{ ($json.data?.business ?? $json.body?.business ?? $json.business ?? {}) }}"
+              },
+              {
+                "id": "customer",
+                "name": "customer",
+                "type": "object",
+                "value": "={{ ($json.data?.customer ?? $json.body?.customer ?? $json.customer ?? {}) }}"
+              },
+              {
+                "id": "conversation",
+                "name": "conversation",
+                "type": "object",
+                "value": "={{ ($json.data?.conversation ?? $json.body?.conversation ?? $json.conversation ?? {}) }}"
+              },
+              {
+                "id": "response",
+                "name": "response",
+                "type": "string",
+                "value": "={{ ($json.data?.response ?? $json.body?.response ?? $json.response ?? '') }}"
+              },
+              {
+                "id": "intent",
+                "name": "intent",
+                "type": "string",
+                "value": "={{ ($json.data?.intent ?? $json.body?.intent ?? $json.intent ?? '') }}"
+              },
+              {
+                "id": "next_action",
+                "name": "next_action",
+                "type": "string",
+                "value": "={{ ($json.data?.next_action ?? $json.body?.next_action ?? $json.next_action ?? '') }}"
+              },
+              {
+                "id": "phone_number",
+                "name": "phone_number",
+                "type": "string",
+                "value": "={{ ($json.data?.phone_number ?? $json.body?.phone_number ?? $json.phone_number ?? '') }}"
+              },
+              {
+                "id": "phone_number_id",
+                "name": "phone_number_id",
+                "type": "string",
+                "value": "={{ ($json.data?.phone_number_id ?? $json.body?.phone_number_id ?? $json.phone_number_id ?? '') }}"
+              },
+              {
+                "id": "lead",
+                "name": "lead",
+                "type": "object",
+                "value": "={{ ($json.data?.lead ?? $json.body?.lead ?? $json.lead ?? {}) }}"
+              },
+              {
+                "id": "tenant_id",
+                "name": "tenant_id",
+                "type": "string",
+                "value": "={{ ($json.data?.tenant_id ?? $json.body?.tenant_id ?? $json.tenant_id ?? $json.data?.business?.tenant_id ?? $json.data?.business?.id ?? $json.business?.tenant_id ?? $json.business?.id ?? '') }}"
+              }
+            ]
+          }
+        },
+        "typeVersion": 3.4
+      },
+      {
+        "id": "send-whatsapp-reply",
+        "name": "HTTP Request ??? Send WhatsApp Reply",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          448,
+          0
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.whatsapp.send_message",
+          "method": "POST",
+          "options": {},
+          "jsonBody": "={{ JSON.stringify({\n  phone_number: $('Set ??? Normalize Response Input').item.json.phone_number,\n  message: $('Set ??? Normalize Response Input').item.json.response,\n  phone_number_id: $('Set ??? Normalize Response Input').item.json.phone_number_id\n}) }}",
+          "sendBody": true,
+          "specifyBody": "json"
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "if-whatsapp-successful",
+        "name": "IF ??? WhatsApp Send Successful?",
+        "type": "n8n-nodes-base.if",
+        "position": [
+          672,
+          16
+        ],
+        "parameters": {
+          "options": {},
+          "conditions": {
+            "options": {
+              "version": 3,
+              "leftValue": "",
+              "caseSensitive": true,
+              "typeValidation": "strict"
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "whatsapp-success",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                },
+                "leftValue": "={{ ($json.message?.success ?? $json.success) }}",
+                "rightValue": true
+              }
+            ]
+          }
+        },
+        "typeVersion": 2.2
+      },
+      {
+        "id": "successful-result",
+        "name": "Set ??? Successful WhatsApp Result",
+        "type": "n8n-nodes-base.set",
+        "position": [
+          896,
+          -96
+        ],
+        "parameters": {
+          "options": {},
+          "assignments": {
+            "assignments": [
+              {
+                "id": "business",
+                "name": "business",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.business }}"
+              },
+              {
+                "id": "customer",
+                "name": "customer",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.customer }}"
+              },
+              {
+                "id": "lead",
+                "name": "lead",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.lead }}"
+              },
+              {
+                "id": "conversation",
+                "name": "conversation",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.conversation }}"
+              },
+              {
+                "id": "response",
+                "name": "response",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.response }}"
+              },
+              {
+                "id": "intent",
+                "name": "intent",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.intent }}"
+              },
+              {
+                "id": "next_action",
+                "name": "next_action",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.next_action }}"
+              },
+              {
+                "id": "phone_number",
+                "name": "phone_number",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.phone_number }}"
+              },
+              {
+                "id": "phone_number_id",
+                "name": "phone_number_id",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.phone_number_id }}"
+              },
+              {
+                "id": "tenant_id",
+                "name": "tenant_id",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.tenant_id }}"
+              },
+              {
+                "id": "send_status",
+                "name": "send_status",
+                "type": "string",
+                "value": "sent"
+              },
+              {
+                "id": "success",
+                "name": "success",
+                "type": "boolean",
+                "value": "={{ $json.message?.success ?? $json.success }}"
+              },
+              {
+                "id": "message_id",
+                "name": "message_id",
+                "type": "string",
+                "value": "={{ $json.message?.message_id ?? $json.message_id ?? '' }}"
+              },
+              {
+                "id": "conversation_id",
+                "name": "conversation_id",
+                "type": "string",
+                "value": "={{ $json.message?.conversation_id ?? $json.conversation_id ?? '' }}"
+              }
+            ]
+          }
+        },
+        "typeVersion": 3.4
+      },
+      {
+        "id": "failed-result",
+        "name": "Set ??? Failed WhatsApp Result",
+        "type": "n8n-nodes-base.set",
+        "position": [
+          896,
+          96
+        ],
+        "parameters": {
+          "options": {},
+          "assignments": {
+            "assignments": [
+              {
+                "id": "business",
+                "name": "business",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.business }}"
+              },
+              {
+                "id": "customer",
+                "name": "customer",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.customer }}"
+              },
+              {
+                "id": "lead",
+                "name": "lead",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.lead }}"
+              },
+              {
+                "id": "conversation",
+                "name": "conversation",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.conversation }}"
+              },
+              {
+                "id": "response",
+                "name": "response",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.response }}"
+              },
+              {
+                "id": "intent",
+                "name": "intent",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.intent }}"
+              },
+              {
+                "id": "next_action",
+                "name": "next_action",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.next_action }}"
+              },
+              {
+                "id": "phone_number",
+                "name": "phone_number",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.phone_number }}"
+              },
+              {
+                "id": "phone_number_id",
+                "name": "phone_number_id",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.phone_number_id }}"
+              },
+              {
+                "id": "tenant_id",
+                "name": "tenant_id",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.tenant_id }}"
+              },
+              {
+                "id": "send_status",
+                "name": "send_status",
+                "type": "string",
+                "value": "failed"
+              },
+              {
+                "id": "success",
+                "name": "success",
+                "type": "boolean",
+                "value": "={{ $json.message?.success ?? $json.success ?? false }}"
+              },
+              {
+                "id": "error",
+                "name": "error",
+                "type": "string",
+                "value": "={{ $json.message?.error || $json.error || 'WhatsApp send failed' }}"
+              }
+            ]
+          }
+        },
+        "typeVersion": 3.4
+      },
+      {
+        "id": "wf4-execute-wf5-analytics",
+        "name": "Execute Workflow ??? WF5 Analytics",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "position": [
+          1120,
+          0
+        ],
+        "parameters": {
+          "options": {},
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "460a2acd-97cb-4bd1-9fa2-a3673e23cf66"
+          },
+          "workflowInputs": {
+            "value": {
+              "data": "={{ $json }}"
+            },
+            "schema": [
+              {
+                "id": "data",
+                "type": "object",
+                "display": true,
+                "removed": false,
+                "required": false,
+                "displayName": "data",
+                "defaultMatch": false,
+                "canBeUsedToMatch": true
+              }
+            ],
+            "mappingMode": "defineBelow",
+            "matchingColumns": [
+              "data"
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "typeVersion": 1.2
+      }
+    ],
+    "active": true,
+    "settings": {
+      "binaryMode": "separate",
+      "executionOrder": "v1"
+    },
+    "versionId": "b779f244-d18a-4181-a97d-4a87fac693ad",
+    "staticData": null,
+    "connections": {
+      "Execute Workflow Trigger": {
+        "main": [
+          [
+            {
+              "node": "Set ??? Normalize Response Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Set ??? Failed WhatsApp Result": {
+        "main": [
+          [
+            {
+              "node": "Execute Workflow ??? WF5 Analytics",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF ??? WhatsApp Send Successful?": {
+        "main": [
+          [
+            {
+              "node": "Set ??? Successful WhatsApp Result",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Set ??? Failed WhatsApp Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Set ??? Normalize Response Input": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request ??? Send WhatsApp Reply",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Set ??? Successful WhatsApp Result": {
+        "main": [
+          [
+            {
+              "node": "Execute Workflow ??? WF5 Analytics",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request ??? Send WhatsApp Reply": {
+        "main": [
+          [
+            {
+              "node": "IF ??? WhatsApp Send Successful?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "460a2acd-97cb-4bd1-9fa2-a3673e23cf66",
+    "name": "Workflow 5 — Conversation / AI Analytics",
+    "nodes": [
+      {
+        "id": "22eb19d1-d100-4c0f-a20d-b08a921299e2",
+        "name": "Execute Workflow Trigger",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "position": [
+          0,
+          -64
+        ],
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "data",
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "typeVersion": 1.1
+      },
+      {
+        "id": "18a0b281-3844-480c-bd3e-bfa7d1ac72e8",
+        "name": "Set — Normalize Analytics Input",
+        "type": "n8n-nodes-base.set",
+        "position": [
+          224,
+          -64
+        ],
+        "parameters": {
+          "options": {},
+          "assignments": {
+            "assignments": [
+              {
+                "id": "329ed348-41f2-40d2-be34-5fc589a5f329",
+                "name": "business",
+                "type": "object",
+                "value": "={{ $json.data?.business || $json.body?.business || $json.business || ($json.data?.business_id ? { id: $json.data.business_id } : null) || ($json.body?.business_id ? { id: $json.body.business_id } : null) || ($json.business_id ? { id: $json.business_id } : null) || {} }}"
+              },
+              {
+                "id": "35551559-3d0b-4413-aa08-339ed6328d4f",
+                "name": "customer",
+                "type": "object",
+                "value": "={{ $json.data?.customer || $json.body?.customer || $json.customer || {} }}"
+              },
+              {
+                "id": "a6bafae2-80e0-4e0f-9ef8-d1b2920b221b",
+                "name": "lead",
+                "type": "object",
+                "value": "={{ $json.data?.lead || $json.body?.lead || $json.lead || {} }}"
+              },
+              {
+                "id": "cb396fe6-e490-493e-bd7e-3f9aef8856b8",
+                "name": "conversation",
+                "type": "object",
+                "value": "={{ $json.data?.conversation || $json.body?.conversation || $json.conversation || ($json.data?.conversation_id ? { id: $json.data.conversation_id } : null) || ($json.body?.conversation_id ? { id: $json.body.conversation_id } : null) || ($json.conversation_id ? { id: $json.conversation_id } : null) || {} }}"
+              },
+              {
+                "id": "0c711610-23e3-4884-a365-84fc156ea8ef",
+                "name": "user_message",
+                "type": "string",
+                "value": "={{ $json.data?.user_message || $json.body?.user_message || $json.user_message || $json.data?.message?.text || $json.body?.message?.text || $json.message?.text || $json.data?.message || $json.body?.message || $json.message || \"\" }}"
+              },
+              {
+                "id": "e834360d-de7d-4357-ba13-c2c0af42dba0",
+                "name": "ai_response",
+                "type": "string",
+                "value": "={{ $json.data?.ai_response || $json.body?.ai_response || $json.ai_response || $json.data?.response || $json.body?.response || $json.response || \"\" }}"
+              },
+              {
+                "id": "4bf7c6e1-db5f-4940-8516-738469487266",
+                "name": "intent",
+                "type": "string",
+                "value": "={{ $json.data?.intent || $json.body?.intent || $json.intent || \"\" }}"
+              },
+              {
+                "id": "b00b9f68-efd5-4416-b0d5-c7e94b5f9d31",
+                "name": "intent_confidence",
+                "type": "number",
+                "value": "={{ $json.data?.intent_confidence ?? $json.data?.confidence ?? $json.body?.intent_confidence ?? $json.body?.confidence ?? $json.intent_confidence ?? $json.confidence ?? 0 }}"
+              },
+              {
+                "id": "13e70a26-0683-4507-8b62-cd227bfc3290",
+                "name": "next_action",
+                "type": "string",
+                "value": "={{ $json.data?.next_action || $json.body?.next_action || $json.next_action || $json.body?.['Next Action'] || $json['Next Action'] || \"\" }}"
+              },
+              {
+                "id": "b5f431a3-a5e0-4596-9ff7-9a596483cdca",
+                "name": "appointment_conversion",
+                "type": "object",
+                "value": "={{ $json.data?.appointment_conversion || $json.body?.appointment_conversion || $json.appointment_conversion || $json.data?.appointment || $json.body?.appointment || $json.appointment || $json.data?.conversion || $json.body?.conversion || $json.conversion || null }}"
+              },
+              {
+                "id": "52d951f5-0c10-45e5-b667-840fa8632d18",
+                "name": "timestamp",
+                "type": "string",
+                "value": "={{ $json.data?.timestamp || $json.body?.timestamp || $json.timestamp || $now }}"
+              },
+              {
+                "id": "a22e49d9-deb3-45b9-af0a-7e9543b9ff92",
+                "name": "completed_at",
+                "type": "string",
+                "value": "={{ $json.data?.completed_at || $json.body?.completed_at || $json.completed_at || $json.data?.timestamp || $json.body?.timestamp || $json.timestamp || $now }}"
+              },
+              {
+                "id": "analytics-tenant-id",
+                "name": "tenant_id",
+                "type": "string",
+                "value": "={{ $json.data?.tenant_id || $json.body?.tenant_id || $json.tenant_id || $json.data?.business_id || $json.body?.business_id || $json.business_id || $json.data?.business?.tenant_id || $json.data?.business?.id || $json.body?.business?.tenant_id || $json.body?.business?.id || $json.business?.tenant_id || $json.business?.id || ($json.data?.business) || ($json.body?.business) || ($json.business) || \"\" }}"
+              },
+              {
+                "id": "analytics-appointment-booked",
+                "name": "appointment_booked",
+                "type": "boolean",
+                "value": "={{ $json.data?.appointment_booked ?? $json.body?.appointment_booked ?? $json.appointment_booked ?? false }}"
+              },
+              {
+                "id": "analytics-conversion-outcome",
+                "name": "conversion_outcome",
+                "type": "string",
+                "value": "={{ $json.data?.conversion_outcome || $json.body?.conversion_outcome || $json.conversion_outcome || \"\" }}"
+              }
+            ]
+          }
+        },
+        "typeVersion": 3.4
+      },
+      {
+        "id": "3a69a69d-0521-4035-920f-07c4234ff5f4",
+        "name": "HTTP Request — Record AI Interaction",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          448,
+          -64
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.ai.save_conversation_turn",
+          "method": "POST",
+          "options": {},
+          "jsonBody": "={{ JSON.stringify({\n  conversation_id: $(\"Set — Normalize Analytics Input\").item.json.conversation?.id || $(\"Set — Normalize Analytics Input\").item.json.conversation || \"\",\n  tenant_id: $(\"Set — Normalize Analytics Input\").item.json.business?.id || $(\"Set — Normalize Analytics Input\").item.json.business?.tenant_id || $(\"Set — Normalize Analytics Input\").item.json.tenant_id || \"\",\n  intent: $(\"Set — Normalize Analytics Input\").item.json.intent || \"\",\n  confidence: $(\"Set — Normalize Analytics Input\").item.json.intent_confidence ?? null,\n  response: $(\"Set — Normalize Analytics Input\").item.json.ai_response || $(\"Set — Normalize Analytics Input\").item.json.response || \"\",\n  next_action: $(\"Set — Normalize Analytics Input\").item.json.next_action || \"\"\n}) }}",
+          "sendBody": true,
+          "specifyBody": "json"
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "fe689b28-860e-4927-b473-b77d3da03771",
+        "name": "HTTP Request — Record AI Response Metrics",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          672,
+          -64
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.ai.record_response_metrics",
+          "method": "POST",
+          "options": {},
+          "jsonBody": "={{ JSON.stringify({\n  conversation_id: $('Set — Normalize Analytics Input').item.json.conversation?.id || $('Set — Normalize Analytics Input').item.json.conversation || \"\",\n  tenant_id: $('Set — Normalize Analytics Input').item.json.business?.id || $('Set — Normalize Analytics Input').item.json.business?.tenant_id || $('Set — Normalize Analytics Input').item.json.tenant_id || \"\",\n  response_time_ms: $('Set — Normalize Analytics Input').item.json.response_time_ms || null,\n  response_status: $('Set — Normalize Analytics Input').item.json.response_status || 'success',\n  token_usage: $('Set — Normalize Analytics Input').item.json.token_usage || null,\n  error_status: $('Set — Normalize Analytics Input').item.json.error_status || null\n}) }}",
+          "sendBody": true,
+          "specifyBody": "json"
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "fb90ef1b-be4e-4c04-ba40-fe99f8550c60",
+        "name": "HTTP Request — Record Conversation Outcome",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          896,
+          -64
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.ai.record_conversation_outcome",
+          "method": "POST",
+          "options": {},
+          "jsonBody": "={{ JSON.stringify({\n  conversation_id: $('Set — Normalize Analytics Input').item.json.conversation?.id || $('Set — Normalize Analytics Input').item.json.conversation || \"\",\n  tenant_id: $('Set — Normalize Analytics Input').item.json.business?.id || $('Set — Normalize Analytics Input').item.json.business?.tenant_id || $('Set — Normalize Analytics Input').item.json.tenant_id || \"\",\n  outcome: $('Set — Normalize Analytics Input').item.json.outcome || 'other',\n  completed: $('Set — Normalize Analytics Input').item.json.completed || false,\n  appointment_booked: $('Set — Normalize Analytics Input').item.json.appointment_booked || false\n}) }}",
+          "sendBody": true,
+          "specifyBody": "json"
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "b04c5629-ee7c-4958-86f1-ef92c8966861",
+        "name": "IF — Appointment / Conversion?",
+        "type": "n8n-nodes-base.if",
+        "position": [
+          1120,
+          -64
+        ],
+        "parameters": {
+          "options": {},
+          "conditions": {
+            "options": {
+              "version": 2,
+              "leftValue": "",
+              "caseSensitive": false,
+              "typeValidation": "strict"
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "db2e7be8-1baf-4f53-a5bd-be4ad43d159b",
+                "operator": {
+                  "type": "string",
+                  "operation": "isNotEmpty"
+                },
+                "leftValue": "={{ $('Set — Normalize Analytics Input').item.json.appointment_conversion || $('Set — Normalize Analytics Input').item.json.appointment_booked || $('Set — Normalize Analytics Input').item.json.conversion_outcome || '' }}",
+                "rightValue": ""
+              }
+            ]
+          }
+        },
+        "typeVersion": 2.2
+      },
+      {
+        "id": "a138da16-7e5f-427d-b565-a7a68946d844",
+        "name": "HTTP Request — Record Appointment / Conversion Attribution",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          1344,
+          -144
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.ai.record_conversion_attribution",
+          "method": "POST",
+          "options": {},
+          "jsonBody": "={{ JSON.stringify({\n  conversation_id: $('Set — Normalize Analytics Input').item.json.conversation?.id || $('Set — Normalize Analytics Input').item.json.conversation || \"\",\n  tenant_id: $('Set — Normalize Analytics Input').item.json.business?.id || $('Set — Normalize Analytics Input').item.json.business?.tenant_id || $('Set — Normalize Analytics Input').item.json.tenant_id || \"\",\n  customer_id: $('Set — Normalize Analytics Input').item.json.customer?.id || $('Set — Normalize Analytics Input').item.json.customer || \"\",\n  lead_id: $('Set — Normalize Analytics Input').item.json.lead?.id || $('Set — Normalize Analytics Input').item.json.lead || \"\",\n  intent: $('Set — Normalize Analytics Input').item.json.intent || \"\",\n  ai_interaction_id: $('HTTP Request — Record AI Interaction').item.json.message?.interaction_id || $('HTTP Request — Record AI Interaction').item.json.interaction_id || null,\n  appointment_id: $('Set — Normalize Analytics Input').item.json.appointment_id || null,\n  conversion_id: $('Set — Normalize Analytics Input').item.json.conversion_id || null,\n  attribution_source: 'AI_RECEPTIONIST'\n}) }}",
+          "sendBody": true,
+          "specifyBody": "json"
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "daed75e3-f294-4758-a3f8-213d35a7e3b0",
+        "name": "HTTP Request — Update AI Analytics",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          1568,
+          -64
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.ai.update_ai_analytics",
+          "method": "POST",
+          "options": {},
+          "jsonBody": "={{ JSON.stringify({\n  tenant_id: $('Set — Normalize Analytics Input').item.json.business?.id || $('Set — Normalize Analytics Input').item.json.business?.tenant_id || $('Set — Normalize Analytics Input').item.json.tenant_id || \"\",\n  conversation_id: $('Set — Normalize Analytics Input').item.json.conversation?.id || $('Set — Normalize Analytics Input').item.json.conversation || \"\",\n  customer_id: $('Set — Normalize Analytics Input').item.json.customer?.id || $('Set — Normalize Analytics Input').item.json.customer || \"\",\n  lead_id: $('Set — Normalize Analytics Input').item.json.lead?.id || $('Set — Normalize Analytics Input').item.json.lead || \"\",\n  intent: $('Set — Normalize Analytics Input').item.json.intent || \"\",\n  intent_confidence: $('Set — Normalize Analytics Input').item.json.intent_confidence ?? null,\n  ai_response: $('Set — Normalize Analytics Input').item.json.ai_response || \"\",\n  next_action: $('Set — Normalize Analytics Input').item.json.next_action || \"\",\n  appointment_booked: $('Set — Normalize Analytics Input').item.json.appointment_booked || false,\n  conversion_outcome: $('Set — Normalize Analytics Input').item.json.conversion_outcome || null,\n  timestamp: $('Set — Normalize Analytics Input').item.json.timestamp\n}) }}",
+          "sendBody": true,
+          "specifyBody": "json"
+        },
+        "typeVersion": 4.2
+      }
+    ],
+    "active": true,
+    "settings": {
+      "binaryMode": "separate",
+      "executionOrder": "v1"
+    },
+    "versionId": "9c934a43-51cb-4aa8-b663-1afe52fb8bac",
+    "staticData": null,
+    "connections": {
+      "IF — Appointment / Conversion?": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request — Record Appointment / Conversion Attribution",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "HTTP Request — Update AI Analytics",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Set — Normalize Analytics Input": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request — Record AI Interaction",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request — Update AI Analytics": {
+        "main": [
+          []
+        ]
+      },
+      "HTTP Request — Record AI Interaction": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request — Record AI Response Metrics",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request — Record AI Response Metrics": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request — Record Conversation Outcome",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request — Record Conversation Outcome": {
+        "main": [
+          [
+            {
+              "node": "IF — Appointment / Conversion?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request — Record Appointment / Conversion Attribution": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request — Update AI Analytics",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "heshly-ai-action-book-v2",
+    "name": "WF3/2 — AI Action — Book Appointment",
+    "nodes": [
+      {
+        "id": "wf3-2-trigger",
+        "name": "Execute Workflow Trigger",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "position": [
+          0,
+          0
+        ],
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "data",
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "typeVersion": 1.1
+      },
+      {
+        "id": "wf3-2-normalize",
+        "name": "Set — Normalize Booking Input",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          300,
+          0
+        ],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "jsCode": "const envelope = $input.first().json || {};\nconst input = envelope.data || envelope;\nconst body = input.body && typeof input.body === 'object' ? input.body : input;\n\nconst entities = body.Entities || body.entities || {};\nconst customer = body.Customer || body.customer || {};\nconst business = body.Business || body.business || {};\nconst scheduled = String(entities.scheduled_time || body.scheduled_time || '');\nconst preferred_date = entities.preferred_date || body.preferred_date || (scheduled ? scheduled.substring(0, 10) : '');\nconst preferred_time = entities.preferred_time || body.preferred_time || (scheduled.includes('T') ? scheduled.split('T')[1].substring(0, 8) : '');\n\nreturn [{\n  json: {\n    business,\n    customer,\n    lead: body.Lead || body.lead || {},\n    service: entities.service || body.service || '',\n    preferred_date,\n    preferred_time,\n    duration_minutes: entities.duration_minutes || body.duration_minutes || 30,\n    tenant_id: body.tenant_id || business.id || business.tenant_id || '',\n    customer_name: customer.name || body.customer_name || '',\n    customer_phone: customer.phone || body.customer_phone || '',\n    notes: entities.notes || body.notes || ''\n  }\n}];"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "wf3-2-create-appointment",
+        "name": "HTTP Request — Create Appointment",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          600,
+          0
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.booking.book_appointment",
+          "method": "POST",
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true,
+                "responseFormat": "json"
+              }
+            },
+            "alwaysOutputData": true
+          },
+          "jsonBody": "={{ JSON.stringify({ customer_name: $json.customer?.name || $json.customer_name || \"Customer\", customer_phone: $json.customer?.phone || $json.customer_phone || \"\", service: $json.service || \"\", scheduled_time: $json.scheduled_time || $json.appointment_date || $json.date || (($json.preferred_date || \"\") + \"T\" + ($json.preferred_time || \"00:00:00\")) , duration_minutes: $json.duration_minutes || 30, notes: $json.notes || $json.lead?.notes || null, tenant_id: $json.tenant_id || $json.business?.id || $json.business?.tenant_id || $json.business_id || \"\" }) }}",
+          "sendBody": true,
+          "contentType": "json",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "wf3-2-booking-result",
+        "name": "Set — Booking Result",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          900,
+          0
+        ],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "jsCode": "const raw = $input.first().json || {};\nconst input = (raw.message && typeof raw.message === 'object') ? raw.message : raw;\nconst success = input.success === true;\n\nreturn [{\n  json: {\n    success,\n    action: 'BOOK_APPOINTMENT',\n    status: success ? 'BOOKED' : 'FAILED',\n    appointment_id: input.appointment_id || null,\n    service: input.service || '',\n    scheduled_time: input.scheduled_time || null,\n    tenant_id: input.tenant_id || null,\n    message: (typeof input.message === 'string' ? input.message : null) || (\n      success ? 'Appointment booked successfully.' : 'Appointment booking failed.'\n    )\n  }\n}];"
+        },
+        "typeVersion": 2
+      }
+    ],
+    "active": true,
+    "settings": {},
+    "versionId": "63ace1c4-ab0e-4e18-bdcf-e64321502b57",
+    "staticData": null,
+    "connections": {
+      "Execute Workflow Trigger": {
+        "main": [
+          [
+            {
+              "node": "Set — Normalize Booking Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Set — Normalize Booking Input": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request — Create Appointment",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request — Create Appointment": {
+        "main": [
+          [
+            {
+              "node": "Set — Booking Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "heshly-ai-action-update-crm-v1",
+    "name": "WF3/3 — AI Action — Update Lead / Customer",
+    "nodes": [
+      {
+        "id": "execute-wf3-3-trigger",
+        "name": "Execute Workflow Trigger — WF3/3",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "position": [
+          -608,
+          304
+        ],
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "data",
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "typeVersion": 1.1
+      },
+      {
+        "id": "normalize-wf3-3-input",
+        "name": "Set — Normalize CRM Update Input",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          -384,
+          304
+        ],
+        "parameters": {
+          "jsCode": "const envelope = $input.first().json || {};\nconst input = envelope.data || envelope;\nconst body = input.body && typeof input.body === \"object\" ? input.body : input;\nconst business = body.business || body.Business || {};\nconst customer = body.customer || body.Customer || {};\nconst lead = body.lead || body.Lead || {};\nconst entities = body.entities || body.Entities || {};\n\nreturn [{ json: {\n  Business: business,\n  Customer: customer,\n  Lead: lead,\n  Conversation: body.conversation || body.Conversation || {},\n  Message: body.message || body.Message || {},\n  Entities: entities,\n  tenant_id: business.id || business.tenant_id || body.tenant_id || \"\",\n  lead_id: entities.lead_id || lead.id || lead.lead_id || lead.heshly_lead_id || customer.lead_id || customer.id || \"\",\n  full_name: entities.name || entities.full_name || customer.name || lead.name || lead.full_name || customer.phone || \"Customer\",\n  phone: entities.phone || customer.phone || lead.phone || lead.mobile_no || \"\",\n  email: entities.email || customer.email || lead.email || lead.email_id || null\n} }];"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "update-wf3-3-lead",
+        "name": "HTTP Request — Update Lead / Customer",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          -160,
+          304
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.customers.update_lead",
+          "body": "={{ JSON.stringify({lead_id:$json.lead_id,full_name:$json.full_name,phone:$json.phone||null,email:$json.email||null,tenant_id:$json.tenant_id}) }}",
+          "method": "POST",
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true,
+                "responseFormat": "json"
+              }
+            },
+            "alwaysOutputData": true
+          },
+          "sendBody": true,
+          "contentType": "raw",
+          "sendHeaders": true,
+          "rawContentType": "application/json",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "crm-update-result-wf3-3",
+        "name": "Set — CRM Update Result",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          64,
+          304
+        ],
+        "parameters": {
+          "jsCode": "const raw = $input.first().json || {};\nconst input = (raw.message && typeof raw.message === 'object') ? raw.message : raw;\nconst success = input.success === true;\nreturn [{ json: {\n  success,\n  action: 'UPDATE_LEAD_CUSTOMER',\n  status: success ? 'UPDATED' : 'FAILED',\n  lead: input.lead || null,\n  customer: input.customer || null,\n  message: (typeof input.message === 'string' ? input.message : null) || (success ? 'Lead/customer updated successfully.' : 'Lead/customer update failed.')\n} }];"
+        },
+        "typeVersion": 2
+      }
+    ],
+    "active": true,
+    "settings": {
+      "binaryMode": "separate",
+      "executionOrder": "v1"
+    },
+    "versionId": "f4b1e77c-cd70-4c24-afc9-a3c3d8a058ac",
+    "staticData": null,
+    "connections": {
+      "Execute Workflow Trigger — WF3/3": {
+        "main": [
+          [
+            {
+              "node": "Set — Normalize CRM Update Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Set — Normalize CRM Update Input": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request — Update Lead / Customer",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request — Update Lead / Customer": {
+        "main": [
+          [
+            {
+              "node": "Set — CRM Update Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "8f3c2a91-7d64-4e52-b8a1-91c7f4e62d30",
+    "name": "WF3/1 — AI Action — Check Availability",
+    "nodes": [
+      {
+        "id": "wf31-trigger",
+        "name": "Execute Workflow Trigger",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "position": [
+          240,
+          320
+        ],
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "data",
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "typeVersion": 1.1
+      },
+      {
+        "id": "wf31-normalize",
+        "name": "Set — Availability Input",
+        "type": "n8n-nodes-base.set",
+        "position": [
+          464,
+          320
+        ],
+        "parameters": {
+          "options": {},
+          "assignments": {
+            "assignments": [
+              {
+                "id": "wf31-business",
+                "name": "Business",
+                "type": "object",
+                "value": "={{ $json.data?.Business || $json.Business || $json.business }}"
+              },
+              {
+                "id": "wf31-customer",
+                "name": "Customer",
+                "type": "object",
+                "value": "={{ $json.data?.Customer || $json.Customer || $json.customer }}"
+              },
+              {
+                "id": "wf31-entities",
+                "name": "Entities",
+                "type": "object",
+                "value": "={{ $json.data?.Entities || $json.Entities || $json.entities }}"
+              },
+              {
+                "id": "wf31-next-action",
+                "name": "next_action",
+                "type": "string",
+                "value": "={{ $json.data?.next_action || $json.next_action }}"
+              }
+            ]
+          }
+        },
+        "typeVersion": 3.4
+      },
+      {
+        "id": "wf31-http",
+        "name": "HTTP Request — Check Availability",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          688,
+          320
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.availability.check_availability",
+          "body": "={{ JSON.stringify({\n  service: $json.Entities?.service || '',\n  preferred_date: ($json.Entities?.date || '').substring(0,10),\n  duration_minutes: $json.Entities?.duration_minutes || 30,\n  tenant_id: $json.Business?.tenant_id || $json.Business?.id || ''\n}) }}",
+          "method": "POST",
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true,
+                "responseFormat": "json"
+              }
+            }
+          },
+          "sendBody": true,
+          "contentType": "raw",
+          "rawContentType": "application/json"
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "wf31-switch",
+        "name": "Switch — Availability Status",
+        "type": "n8n-nodes-base.switch",
+        "position": [
+          912,
+          320
+        ],
+        "parameters": {
+          "rules": {
+            "values": [
+              {
+                "outputKey": "available",
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "leftValue": "",
+                    "caseSensitive": true,
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "wf31-true-condition",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ String($json.message?.available ?? $json.available) }}",
+                      "rightValue": "true"
+                    }
+                  ]
+                },
+                "renameOutput": true
+              },
+              {
+                "outputKey": "unavailable",
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "leftValue": "",
+                    "caseSensitive": true,
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "wf31-false-condition",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ String($json.message?.available ?? $json.available) }}",
+                      "rightValue": "false"
+                    }
+                  ]
+                },
+                "renameOutput": true
+              }
+            ]
+          },
+          "options": {}
+        },
+        "typeVersion": 3.2
+      },
+      {
+        "id": "wf31-return-available",
+        "name": "Return — Available",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          1136,
+          224
+        ],
+        "parameters": {
+          "jsCode": "const src = ($json.message && typeof $json.message === 'object') ? $json.message : $json;\nreturn [{ json: {\n  success: true,\n  action: 'CHECK_AVAILABILITY',\n  available: src.available ?? false,\n  service: src.service ?? null,\n  preferred_date: src.preferred_date ?? null,\n  slots: src.slots ?? []\n} }];"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "wf31-return-unavailable",
+        "name": "Return — Unavailable",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          1136,
+          416
+        ],
+        "parameters": {
+          "jsCode": "const src = ($json.message && typeof $json.message === 'object') ? $json.message : $json;\nreturn [{ json: {\n  success: true,\n  action: 'CHECK_AVAILABILITY',\n  available: false,\n  service: src.service ?? null,\n  preferred_date: src.preferred_date ?? null,\n  slots: src.slots ?? []\n} }];"
+        },
+        "typeVersion": 2
+      }
+    ],
+    "active": true,
+    "settings": {
+      "binaryMode": "separate",
+      "executionOrder": "v1"
+    },
+    "versionId": "6c298277-57f3-47b9-8570-6c8aeee5295d",
+    "staticData": null,
+    "connections": {
+      "Execute Workflow Trigger": {
+        "main": [
+          [
+            {
+              "node": "Set — Availability Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Set — Availability Input": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request — Check Availability",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Switch — Availability Status": {
+        "main": [
+          [
+            {
+              "node": "Return — Available",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Return — Unavailable",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request — Check Availability": {
+        "main": [
+          [
+            {
+              "node": "Switch — Availability Status",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  }
+]
