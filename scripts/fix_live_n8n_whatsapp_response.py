@@ -145,15 +145,15 @@ def fix_wf3_prepare(workflow):
     return False
 
 def prepare_update_payload(workflow):
-    # n8n PUT /workflows/{id} rejects read-only field "active" (400: request/body/active is read-only)
-    # Do NOT include "active" in PUT payload. Preserve active state separately and use POST /workflows/{id}/activate if needed.
+    # n8n PUT /workflows/{id} rejects read-only/additional properties:
+    # - 400: request/body/active is read-only
+    # - 400: request/body/settings must NOT have additional properties
+    # For this deployment we only need to update nodes/connections for WF3/1, WF4, WF3.
+    # Send minimal payload with only required fields.
     payload = {
         "name": workflow["name"],
         "nodes": workflow["nodes"],
         "connections": workflow["connections"],
-        "settings": workflow.get("settings", {}),
-        "staticData": workflow.get("staticData"),
-        "pinData": workflow.get("pinData", {}),
     }
     return payload
 
