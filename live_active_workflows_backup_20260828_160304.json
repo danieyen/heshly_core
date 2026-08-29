@@ -220,7 +220,7 @@
             ]
           },
           "options": {
-            "fallbackOutput": "none"
+            "fallbackOutput": "other"
           }
         },
         "typeVersion": 3.2
@@ -306,7 +306,7 @@
               "data"
             ],
             "attemptToConvertTypes": false,
-            "convertFieldsToString": true
+            "convertFieldsToString": false
           }
         },
         "typeVersion": 1.2
@@ -349,7 +349,7 @@
               "data"
             ],
             "attemptToConvertTypes": false,
-            "convertFieldsToString": true
+            "convertFieldsToString": false
           }
         },
         "typeVersion": 1.2
@@ -372,12 +372,27 @@
             "cachedResultName": "WF3/4 — AI Action — Other / Fallback"
           },
           "workflowInputs": {
-            "value": {},
-            "schema": [],
+            "value": {
+              "data": "={{ $json }}"
+            },
+            "schema": [
+              {
+                "id": "data",
+                "type": "object",
+                "display": true,
+                "removed": false,
+                "required": false,
+                "displayName": "data",
+                "defaultMatch": false,
+                "canBeUsedToMatch": true
+              }
+            ],
             "mappingMode": "defineBelow",
-            "matchingColumns": [],
+            "matchingColumns": [
+              "data"
+            ],
             "attemptToConvertTypes": false,
-            "convertFieldsToString": true
+            "convertFieldsToString": false
           }
         },
         "typeVersion": 1.2
@@ -401,7 +416,7 @@
           288
         ],
         "parameters": {
-          "jsCode": "const action = $input.first().json || {};\nconst original = $(\"Set — Normalize Action Input\").item.json || {};\n\nlet response = action.message || action.response || original.response || \"\";\n\nconst actionName = String(\n  action.action || action.next_action || original.next_action || \"\"\n).toUpperCase();\n\nconst available =\n  action.available === true ||\n  String(action.available).toLowerCase() === \"true\";\n\nconst unavailable =\n  action.available === false ||\n  String(action.available).toLowerCase() === \"false\";\n\nif (!response && actionName === \"CHECK_AVAILABILITY\") {\n  if (available && Array.isArray(action.slots) && action.slots.length) {\n    response = `The requested service is available. Available times: ${action.slots.join(\", \")}`;\n  } else if (unavailable) {\n    response = \"Unfortunately, that time is not available.\";\n  }\n}\n\nreturn [{\n  json: {\n    business: original.business || {},\n    customer: original.customer || {},\n    lead: original.lead || {},\n    conversation: original.conversation || {},\n    response,\n    intent: original.intent || \"\",\n    next_action: original.next_action || action.next_action || action.action || \"OTHER\",\n    phone_number: original.phone_number || \"\",\n    phone_number_id: original.phone_number_id || \"\",\n    action_result: action\n  }\n}];"
+          "jsCode": "const action = $input.first().json || {};\nconst original = $(\"Set — Normalize Action Input\").item.json || {};\n\nlet response = action.message || action.response || original.response || \"\";\n\nconst actionName = String(\n  action.action || action.next_action || original.next_action || \"\"\n).toUpperCase();\n\nconst available =\n  action.available === true ||\n  String(action.available).toLowerCase() === \"true\";\n\nconst unavailable =\n  action.available === false ||\n  String(action.available).toLowerCase() === \"false\";\n\nif (!response && actionName === \"CHECK_AVAILABILITY\") {\n  if (available && Array.isArray(action.slots) && action.slots.length) {\n    response = `The requested service is available. Available times: ${action.slots.join(\", \")}`;\n  } else if (unavailable) {\n    response = \"Unfortunately, that time is not available.\";\n  }\n}\n\nif (!response && actionName === \"BOOK_APPOINTMENT\") {\n  if (action.success === true || String(action.success).toLowerCase() === \"true\") {\n    response = action.message || \"Your appointment has been booked successfully.\";\n  } else if (action.success === false || String(action.success).toLowerCase() === \"false\") {\n    response = action.message || \"Sorry, we could not book your appointment. Please try another time.\";\n  }\n}\n\nif (!response && actionName === \"UPDATE_LEAD_CUSTOMER\") {\n  if (action.success === true || String(action.success).toLowerCase() === \"true\") {\n    response = action.message || \"Your details have been updated successfully.\";\n  }\n}\n\nreturn [{\n  json: {\n    business: original.business || {},\n    customer: original.customer || {},\n    lead: original.lead || {},\n    conversation: original.conversation || {},\n    response,\n    intent: original.intent || \"\",\n    next_action: original.next_action || action.next_action || action.action || \"OTHER\",\n    phone_number: original.phone_number || \"\",\n    phone_number_id: original.phone_number_id || \"\",\n    action_result: action\n  }\n}];"
         },
         "typeVersion": 2
       },
@@ -419,6 +434,29 @@
             "__rl": true,
             "mode": "id",
             "value": "37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd"
+          },
+          "workflowInputs": {
+            "value": {
+              "data": "={{ $json }}"
+            },
+            "schema": [
+              {
+                "id": "data",
+                "type": "object",
+                "display": true,
+                "removed": false,
+                "required": false,
+                "displayName": "data",
+                "defaultMatch": false,
+                "canBeUsedToMatch": true
+              }
+            ],
+            "mappingMode": "defineBelow",
+            "matchingColumns": [
+              "data"
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
           }
         },
         "typeVersion": 1
@@ -650,6 +688,36 @@
                 "name": "business_knowledge",
                 "type": "object",
                 "value": "={{ $json.data?.business_knowledge || $json.body?.business_knowledge || $json.business_knowledge || {} }}"
+              },
+              {
+                "id": "tenant_id",
+                "name": "tenant_id",
+                "type": "string",
+                "value": "={{ $json.data?.tenant_id || $json.body?.tenant_id || $json.tenant_id || $json.business?.tenant_id || $json.business?.id || \"\" }}"
+              },
+              {
+                "id": "business_id",
+                "name": "business_id",
+                "type": "string",
+                "value": "={{ $json.data?.business_id || $json.body?.business_id || $json.business_id || $json.business?.id || $json.business?.tenant_id || \"\" }}"
+              },
+              {
+                "id": "phone_number",
+                "name": "phone_number",
+                "type": "string",
+                "value": "={{ $json.data?.phone_number || $json.body?.phone_number || $json.phone_number || $json.message?.phone_number || $json.message?.from || \"\" }}"
+              },
+              {
+                "id": "phone_number_id",
+                "name": "phone_number_id",
+                "type": "string",
+                "value": "={{ $json.data?.phone_number_id || $json.body?.phone_number_id || $json.phone_number_id || $json.message?.phone_number_id || \"\" }}"
+              },
+              {
+                "id": "conversation_history",
+                "name": "conversation_history",
+                "type": "object",
+                "value": "={{ $json.data?.conversation_history || $json.body?.conversation_history || $json.conversation_history || [] }}"
               }
             ]
           }
@@ -718,7 +786,7 @@
           0
         ],
         "parameters": {
-          "jsCode": "\nconst input = $json;\n\nlet ai = input.output ?? input;\n\nif (typeof ai === \"string\") {\n  try {\n    ai = JSON.parse(ai);\n  } catch {\n    ai = {};\n  }\n}\n\nif (ai.output && typeof ai.output === \"object\") {\n  ai = ai.output;\n}\n\nconst intent =\n  typeof ai.intent === \"string\"\n    ? ai.intent.trim()\n    : \"OTHER\";\n\nconst entities =\n  ai.entities && typeof ai.entities === \"object\"\n    ? ai.entities\n    : {};\n\nconst allowed = new Set([\n  \"CHECK_AVAILABILITY\",\n  \"BOOK_APPOINTMENT\",\n  \"UPDATE_LEAD_CUSTOMER\",\n  \"OTHER\"\n]);\n\nconst candidate =\n  typeof ai.next_action === \"string\"\n    ? ai.next_action.trim().toUpperCase()\n    : \"OTHER\";\n\nconst next_action = allowed.has(candidate)\n  ? candidate\n  : \"OTHER\";\n\nconst response =\n  typeof ai.response === \"string\"\n    ? ai.response.trim()\n    : \"I can help with that.\";\n\nconst confidence = Math.max(\n  0,\n  Math.min(\n    1,\n    Number.isFinite(Number(ai.confidence))\n      ? Number(ai.confidence)\n      : 0\n  )\n);\n\nconst original = $(\"Set — Normalize AI Input\").item.json;\n\nreturn [{\n  json: {\n    business: original.business || {},\n    customer: original.customer || {},\n    lead: original.lead || {},\n    conversation: original.conversation || {},\n    message: original.message || {},\n    business_knowledge: original.business_knowledge || {},\n\n    phone_number:\n      original.phone_number ||\n      original.message?.phone_number ||\n      original.message?.from ||\n      \"\",\n\n    phone_number_id:\n      original.phone_number_id ||\n      original.message?.phone_number_id ||\n      \"\",\n\n    intent,\n    entities,\n    next_action,\n    response,\n    confidence\n  }\n}];\n"
+          "jsCode": "\nconst input = $json;\n\nlet ai = input.output ?? input;\n\nif (typeof ai === \"string\") {\n  try {\n    ai = JSON.parse(ai);\n  } catch {\n    ai = {};\n  }\n}\n\nif (ai.output && typeof ai.output === \"object\") {\n  ai = ai.output;\n}\n\nconst intent =\n  typeof ai.intent === \"string\"\n    ? ai.intent.trim()\n    : \"OTHER\";\n\nconst entities =\n  ai.entities && typeof ai.entities === \"object\"\n    ? ai.entities\n    : {};\n\nconst allowed = new Set([\n  \"CHECK_AVAILABILITY\",\n  \"BOOK_APPOINTMENT\",\n  \"UPDATE_LEAD_CUSTOMER\",\n  \"OTHER\"\n]);\n\nconst candidate =\n  typeof ai.next_action === \"string\"\n    ? ai.next_action.trim().toUpperCase()\n    : \"OTHER\";\n\nconst next_action = allowed.has(candidate)\n  ? candidate\n  : \"OTHER\";\n\nconst response =\n  typeof ai.response === \"string\"\n    ? ai.response.trim()\n    : \"I can help with that.\";\n\nconst confidence = Math.max(\n  0,\n  Math.min(\n    1,\n    Number.isFinite(Number(ai.confidence))\n      ? Number(ai.confidence)\n      : 0\n  )\n);\n\nconst original = $(\"Set — Normalize AI Input\").item.json;\n\nreturn [{\n  json: {\n    business: original.business || {},\n    customer: original.customer || {},\n    lead: original.lead || {},\n    conversation: original.conversation || {},\n    message: original.message || {},\n    business_knowledge: original.business_knowledge || {},\n\n    phone_number:\n      original.phone_number ||\n      original.message?.phone_number ||\n      original.message?.from ||\n      \"\",\n\n    phone_number_id:\n      original.phone_number_id ||\n      original.message?.phone_number_id ||\n      \"\",\n\n    tenant_id: original.tenant_id || original.business?.tenant_id || original.business?.id || \"\",\n    business_id: original.business_id || original.business?.id || \"\",\n    conversation_history: original.conversation_history || [],\n\n    intent,\n    entities,\n    next_action,\n    response,\n    confidence\n  }\n}];\n"
         },
         "typeVersion": 2
       },
@@ -855,7 +923,14 @@
           304
         ],
         "parameters": {
-          "inputSource": "passthrough"
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "data",
+                "type": "object"
+              }
+            ]
+          }
         },
         "typeVersion": 1.1
       },
@@ -881,7 +956,7 @@
           304
         ],
         "parameters": {
-          "jsCode": "const input = $input.first().json || {};\n\nreturn [{\n  json: {\n    success: true,\n    action: 'OTHER',\n    status: 'FALLBACK',\n    next_action: 'OTHER',\n    message: 'Action received but no specific workflow is configured.',\n    business: input.business || {},\n    customer: input.customer || {},\n    lead: input.lead || {},\n    tenant_id: input.tenant_id || ''\n  }\n}];"
+          "jsCode": "const input = $input.first().json || {};\n\nreturn [{\n  json: {\n    success: true,\n    action: 'OTHER',\n    status: 'FALLBACK',\n    next_action: 'OTHER',\n    message: 'Action received but no specific workflow is configured.',\n    business: input.business || {},\n    customer: input.customer || {},\n    lead: input.lead || {},\n    conversation: input.conversation || {},\n    tenant_id: input.tenant_id || ''\n  }\n}];"
         },
         "typeVersion": 2
       }
@@ -963,16 +1038,10 @@
           "url": "https://erp.heshly.com/api/method/heshly_core.api.whatsapp.resolve_tenant",
           "method": "POST",
           "options": {},
-          "sendQuery": true,
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ phone_number_id: $json.phone_number_id }) }}",
           "sendHeaders": true,
-          "queryParameters": {
-            "parameters": [
-              {
-                "name": "phone_number_id",
-                "value": "={{$json.phone_number_id}}"
-              }
-            ]
-          },
           "headerParameters": {
             "parameters": [
               {
@@ -1009,7 +1078,7 @@
           "url": "https://erp.heshly.com/api/method/heshly_core.api.customers.find_or_create_lead",
           "method": "POST",
           "options": {},
-          "jsonBody": "={{ JSON.stringify({ phone: $json.phone_number, full_name: $json.customer_name, tenant_id: $json.tenant_id, email: $json.customer_email, source: \"whatsapp\" }) }}",
+          "jsonBody": "={{ JSON.stringify({ phone: $json.phone_number, full_name: $json.customer_name, tenant_id: $json.tenant_id, email: $json.customer_email || null, source: \"whatsapp\" }) }}",
           "sendBody": true,
           "sendHeaders": true,
           "specifyBody": "json",
@@ -1133,7 +1202,7 @@
           "url": "https://erp.heshly.com/api/method/heshly_core.api.ai.get_business_knowledge",
           "method": "POST",
           "options": {},
-          "jsonBody": "{\"tenant_id\":\"={{$('Build CRM Context').first().json.tenant_id }}\"}",
+          "jsonBody": "={{ JSON.stringify({ tenant_id: $('Build CRM Context').first().json.tenant_id }) }}",
           "sendBody": true,
           "sendHeaders": true,
           "specifyBody": "json",
@@ -1409,7 +1478,7 @@
           "url": "https://erp.heshly.com/api/method/heshly_core.api.followups.process_pending",
           "method": "POST",
           "options": {},
-          "jsonBody": "={}",
+          "jsonBody": "={{ JSON.stringify({}) }}",
           "sendBody": true,
           "specifyBody": "json"
         },
@@ -1441,7 +1510,7 @@
           "url": "https://erp.heshly.com/api/method/heshly_core.api.conversations.handle_stale",
           "method": "POST",
           "options": {},
-          "jsonBody": "={}",
+          "jsonBody": "={{ JSON.stringify({}) }}",
           "sendBody": true,
           "specifyBody": "json"
         },
@@ -1590,6 +1659,18 @@
                 "name": "phone_number_id",
                 "type": "string",
                 "value": "={{ ($json.data?.phone_number_id ?? $json.body?.phone_number_id ?? $json.phone_number_id ?? '') }}"
+              },
+              {
+                "id": "lead",
+                "name": "lead",
+                "type": "object",
+                "value": "={{ ($json.data?.lead ?? $json.body?.lead ?? $json.lead ?? {}) }}"
+              },
+              {
+                "id": "tenant_id",
+                "name": "tenant_id",
+                "type": "string",
+                "value": "={{ ($json.data?.tenant_id ?? $json.body?.tenant_id ?? $json.tenant_id ?? $json.data?.business?.tenant_id ?? $json.data?.business?.id ?? $json.business?.tenant_id ?? $json.business?.id ?? '') }}"
               }
             ]
           }
@@ -1608,7 +1689,7 @@
           "url": "https://erp.heshly.com/api/method/heshly_core.api.whatsapp.send_message",
           "method": "POST",
           "options": {},
-          "jsonBody": "={{ {\n  phone_number: $('Set ??? Normalize Response Input').item.json.phone_number,\n  message: $('Set ??? Normalize Response Input').item.json.response,\n  phone_number_id: $('Set ??? Normalize Response Input').item.json.phone_number_id\n} }}",
+          "jsonBody": "={{ JSON.stringify({\n  phone_number: $('Set ??? Normalize Response Input').item.json.phone_number,\n  message: $('Set ??? Normalize Response Input').item.json.response,\n  phone_number_id: $('Set ??? Normalize Response Input').item.json.phone_number_id\n}) }}",
           "sendBody": true,
           "specifyBody": "json"
         },
@@ -1640,7 +1721,7 @@
                   "operation": "true",
                   "singleValue": true
                 },
-                "leftValue": "={{ $json.success }}",
+                "leftValue": "={{ ($json.message?.success ?? $json.success) }}",
                 "rightValue": true
               }
             ]
@@ -1661,6 +1742,66 @@
           "assignments": {
             "assignments": [
               {
+                "id": "business",
+                "name": "business",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.business }}"
+              },
+              {
+                "id": "customer",
+                "name": "customer",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.customer }}"
+              },
+              {
+                "id": "lead",
+                "name": "lead",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.lead }}"
+              },
+              {
+                "id": "conversation",
+                "name": "conversation",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.conversation }}"
+              },
+              {
+                "id": "response",
+                "name": "response",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.response }}"
+              },
+              {
+                "id": "intent",
+                "name": "intent",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.intent }}"
+              },
+              {
+                "id": "next_action",
+                "name": "next_action",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.next_action }}"
+              },
+              {
+                "id": "phone_number",
+                "name": "phone_number",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.phone_number }}"
+              },
+              {
+                "id": "phone_number_id",
+                "name": "phone_number_id",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.phone_number_id }}"
+              },
+              {
+                "id": "tenant_id",
+                "name": "tenant_id",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.tenant_id }}"
+              },
+              {
                 "id": "send_status",
                 "name": "send_status",
                 "type": "string",
@@ -1670,19 +1811,19 @@
                 "id": "success",
                 "name": "success",
                 "type": "boolean",
-                "value": "={{ $json.success }}"
+                "value": "={{ $json.message?.success ?? $json.success }}"
               },
               {
                 "id": "message_id",
                 "name": "message_id",
                 "type": "string",
-                "value": "={{ $json.message_id }}"
+                "value": "={{ $json.message?.message_id ?? $json.message_id ?? '' }}"
               },
               {
                 "id": "conversation_id",
                 "name": "conversation_id",
                 "type": "string",
-                "value": "={{ $json.conversation_id }}"
+                "value": "={{ $json.message?.conversation_id ?? $json.conversation_id ?? '' }}"
               }
             ]
           }
@@ -1702,6 +1843,66 @@
           "assignments": {
             "assignments": [
               {
+                "id": "business",
+                "name": "business",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.business }}"
+              },
+              {
+                "id": "customer",
+                "name": "customer",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.customer }}"
+              },
+              {
+                "id": "lead",
+                "name": "lead",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.lead }}"
+              },
+              {
+                "id": "conversation",
+                "name": "conversation",
+                "type": "object",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.conversation }}"
+              },
+              {
+                "id": "response",
+                "name": "response",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.response }}"
+              },
+              {
+                "id": "intent",
+                "name": "intent",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.intent }}"
+              },
+              {
+                "id": "next_action",
+                "name": "next_action",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.next_action }}"
+              },
+              {
+                "id": "phone_number",
+                "name": "phone_number",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.phone_number }}"
+              },
+              {
+                "id": "phone_number_id",
+                "name": "phone_number_id",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.phone_number_id }}"
+              },
+              {
+                "id": "tenant_id",
+                "name": "tenant_id",
+                "type": "string",
+                "value": "={{ $('Set ??? Normalize Response Input').item.json.tenant_id }}"
+              },
+              {
                 "id": "send_status",
                 "name": "send_status",
                 "type": "string",
@@ -1711,13 +1912,13 @@
                 "id": "success",
                 "name": "success",
                 "type": "boolean",
-                "value": "={{ $json.success }}"
+                "value": "={{ $json.message?.success ?? $json.success ?? false }}"
               },
               {
                 "id": "error",
                 "name": "error",
                 "type": "string",
-                "value": "={{ $json.error || 'WhatsApp send failed' }}"
+                "value": "={{ $json.message?.error || $json.error || 'WhatsApp send failed' }}"
               }
             ]
           }
@@ -1738,6 +1939,29 @@
             "__rl": true,
             "mode": "list",
             "value": "460a2acd-97cb-4bd1-9fa2-a3673e23cf66"
+          },
+          "workflowInputs": {
+            "value": {
+              "data": "={{ $json }}"
+            },
+            "schema": [
+              {
+                "id": "data",
+                "type": "object",
+                "display": true,
+                "removed": false,
+                "required": false,
+                "displayName": "data",
+                "defaultMatch": false,
+                "canBeUsedToMatch": true
+              }
+            ],
+            "mappingMode": "defineBelow",
+            "matchingColumns": [
+              "data"
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
           }
         },
         "typeVersion": 1.2
@@ -1838,7 +2062,17 @@
           0,
           -64
         ],
-        "parameters": {}
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "data",
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "typeVersion": 1.1
       },
       {
         "id": "18a0b281-3844-480c-bd3e-bfa7d1ac72e8",
@@ -1856,79 +2090,91 @@
                 "id": "329ed348-41f2-40d2-be34-5fc589a5f329",
                 "name": "business",
                 "type": "object",
-                "value": "={{ $json.body.business || ($json.body.business_id ? { id: $json.body.business_id } : null) }}"
+                "value": "={{ $json.data?.business || $json.body?.business || $json.business || ($json.data?.business_id ? { id: $json.data.business_id } : null) || ($json.body?.business_id ? { id: $json.body.business_id } : null) || ($json.business_id ? { id: $json.business_id } : null) || {} }}"
               },
               {
                 "id": "35551559-3d0b-4413-aa08-339ed6328d4f",
                 "name": "customer",
                 "type": "object",
-                "value": "={{ $json.body.customer }}"
+                "value": "={{ $json.data?.customer || $json.body?.customer || $json.customer || {} }}"
               },
               {
                 "id": "a6bafae2-80e0-4e0f-9ef8-d1b2920b221b",
                 "name": "lead",
                 "type": "object",
-                "value": "={{ $json.body.lead }}"
+                "value": "={{ $json.data?.lead || $json.body?.lead || $json.lead || {} }}"
               },
               {
                 "id": "cb396fe6-e490-493e-bd7e-3f9aef8856b8",
                 "name": "conversation",
                 "type": "object",
-                "value": "={{ $json.body.conversation || ($json.body.conversation_id ? { id: $json.body.conversation_id } : null) }}"
+                "value": "={{ $json.data?.conversation || $json.body?.conversation || $json.conversation || ($json.data?.conversation_id ? { id: $json.data.conversation_id } : null) || ($json.body?.conversation_id ? { id: $json.body.conversation_id } : null) || ($json.conversation_id ? { id: $json.conversation_id } : null) || {} }}"
               },
               {
                 "id": "0c711610-23e3-4884-a365-84fc156ea8ef",
                 "name": "user_message",
                 "type": "string",
-                "value": "={{ $json.body.user_message || $json.body.message }}"
+                "value": "={{ $json.data?.user_message || $json.body?.user_message || $json.user_message || $json.data?.message?.text || $json.body?.message?.text || $json.message?.text || $json.data?.message || $json.body?.message || $json.message || \"\" }}"
               },
               {
                 "id": "e834360d-de7d-4357-ba13-c2c0af42dba0",
                 "name": "ai_response",
                 "type": "string",
-                "value": "={{ $json.body.ai_response || $json.body.response }}"
+                "value": "={{ $json.data?.ai_response || $json.body?.ai_response || $json.ai_response || $json.data?.response || $json.body?.response || $json.response || \"\" }}"
               },
               {
                 "id": "4bf7c6e1-db5f-4940-8516-738469487266",
                 "name": "intent",
                 "type": "string",
-                "value": "={{ $json.body.intent }}"
+                "value": "={{ $json.data?.intent || $json.body?.intent || $json.intent || \"\" }}"
               },
               {
                 "id": "b00b9f68-efd5-4416-b0d5-c7e94b5f9d31",
                 "name": "intent_confidence",
                 "type": "number",
-                "value": "={{ $json.body.intent_confidence || $json.body.confidence }}"
+                "value": "={{ $json.data?.intent_confidence ?? $json.data?.confidence ?? $json.body?.intent_confidence ?? $json.body?.confidence ?? $json.intent_confidence ?? $json.confidence ?? 0 }}"
               },
               {
                 "id": "13e70a26-0683-4507-8b62-cd227bfc3290",
                 "name": "next_action",
                 "type": "string",
-                "value": "={{ $json.body.next_action || $json.body['Next Action'] }}"
+                "value": "={{ $json.data?.next_action || $json.body?.next_action || $json.next_action || $json.body?.['Next Action'] || $json['Next Action'] || \"\" }}"
               },
               {
                 "id": "b5f431a3-a5e0-4596-9ff7-9a596483cdca",
                 "name": "appointment_conversion",
                 "type": "object",
-                "value": "={{ $json.body.appointment_conversion || $json.body.appointment || $json.body.conversion }}"
+                "value": "={{ $json.data?.appointment_conversion || $json.body?.appointment_conversion || $json.appointment_conversion || $json.data?.appointment || $json.body?.appointment || $json.appointment || $json.data?.conversion || $json.body?.conversion || $json.conversion || null }}"
               },
               {
                 "id": "52d951f5-0c10-45e5-b667-840fa8632d18",
                 "name": "timestamp",
                 "type": "string",
-                "value": "={{ $json.body.timestamp || $now }}"
+                "value": "={{ $json.data?.timestamp || $json.body?.timestamp || $json.timestamp || $now }}"
               },
               {
                 "id": "a22e49d9-deb3-45b9-af0a-7e9543b9ff92",
                 "name": "completed_at",
                 "type": "string",
-                "value": "={{ $json.body.completed_at || $json.body.timestamp || $now }}"
+                "value": "={{ $json.data?.completed_at || $json.body?.completed_at || $json.completed_at || $json.data?.timestamp || $json.body?.timestamp || $json.timestamp || $now }}"
               },
               {
                 "id": "analytics-tenant-id",
                 "name": "tenant_id",
                 "type": "string",
-                "value": "={{ $json.body.tenant_id || $json.body.business_id || ($json.body.business?.id) || ($json.body.business) || \"\" }}"
+                "value": "={{ $json.data?.tenant_id || $json.body?.tenant_id || $json.tenant_id || $json.data?.business_id || $json.body?.business_id || $json.business_id || $json.data?.business?.tenant_id || $json.data?.business?.id || $json.body?.business?.tenant_id || $json.body?.business?.id || $json.business?.tenant_id || $json.business?.id || ($json.data?.business) || ($json.body?.business) || ($json.business) || \"\" }}"
+              },
+              {
+                "id": "analytics-appointment-booked",
+                "name": "appointment_booked",
+                "type": "boolean",
+                "value": "={{ $json.data?.appointment_booked ?? $json.body?.appointment_booked ?? $json.appointment_booked ?? false }}"
+              },
+              {
+                "id": "analytics-conversion-outcome",
+                "name": "conversion_outcome",
+                "type": "string",
+                "value": "={{ $json.data?.conversion_outcome || $json.body?.conversion_outcome || $json.conversion_outcome || \"\" }}"
               }
             ]
           }
@@ -1947,7 +2193,7 @@
           "url": "https://erp.heshly.com/api/method/heshly_core.api.ai.save_conversation_turn",
           "method": "POST",
           "options": {},
-          "jsonBody": "={{ JSON.stringify({\n  conversation_id: $(\"Set — Normalize Analytics Input\").item.json.conversation?.id || $(\"Set — Normalize Analytics Input\").item.json.conversation || \"\",\n  tenant_id: $(\"Set — Normalize Analytics Input\").item.json.business?.id || $(\"Set — Normalize Analytics Input\").item.json.business || \"\",\n  intent: $(\"Set — Normalize Analytics Input\").item.json.intent || \"\",\n  confidence: $(\"Set — Normalize Analytics Input\").item.json.intent_confidence ?? null,\n  response: $(\"Set — Normalize Analytics Input\").item.json.ai_response || $(\"Set — Normalize Analytics Input\").item.json.response || \"\",\n  next_action: $(\"Set — Normalize Analytics Input\").item.json.next_action || \"\"\n}) }}",
+          "jsonBody": "={{ JSON.stringify({\n  conversation_id: $(\"Set — Normalize Analytics Input\").item.json.conversation?.id || $(\"Set — Normalize Analytics Input\").item.json.conversation || \"\",\n  tenant_id: $(\"Set — Normalize Analytics Input\").item.json.business?.id || $(\"Set — Normalize Analytics Input\").item.json.business?.tenant_id || $(\"Set — Normalize Analytics Input\").item.json.tenant_id || \"\",\n  intent: $(\"Set — Normalize Analytics Input\").item.json.intent || \"\",\n  confidence: $(\"Set — Normalize Analytics Input\").item.json.intent_confidence ?? null,\n  response: $(\"Set — Normalize Analytics Input\").item.json.ai_response || $(\"Set — Normalize Analytics Input\").item.json.response || \"\",\n  next_action: $(\"Set — Normalize Analytics Input\").item.json.next_action || \"\"\n}) }}",
           "sendBody": true,
           "specifyBody": "json"
         },
@@ -1965,7 +2211,7 @@
           "url": "https://erp.heshly.com/api/method/heshly_core.api.ai.record_response_metrics",
           "method": "POST",
           "options": {},
-          "jsonBody": "={{ {\n  conversation_id: $('Set — Normalize Analytics Input').item.json.conversation.id || $('Set — Normalize Analytics Input').item.json.conversation,\n  tenant_id: $('Set — Normalize Analytics Input').item.json.business.id || $('Set — Normalize Analytics Input').item.json.business,\n  response_time_ms: $('Set — Normalize Analytics Input').item.json.response_time_ms || null,\n  response_status: $('Set — Normalize Analytics Input').item.json.response_status || 'success',\n  token_usage: $('Set — Normalize Analytics Input').item.json.token_usage || null,\n  error_status: $('Set — Normalize Analytics Input').item.json.error_status || null\n} }}",
+          "jsonBody": "={{ JSON.stringify({\n  conversation_id: $('Set — Normalize Analytics Input').item.json.conversation?.id || $('Set — Normalize Analytics Input').item.json.conversation || \"\",\n  tenant_id: $('Set — Normalize Analytics Input').item.json.business?.id || $('Set — Normalize Analytics Input').item.json.business?.tenant_id || $('Set — Normalize Analytics Input').item.json.tenant_id || \"\",\n  response_time_ms: $('Set — Normalize Analytics Input').item.json.response_time_ms || null,\n  response_status: $('Set — Normalize Analytics Input').item.json.response_status || 'success',\n  token_usage: $('Set — Normalize Analytics Input').item.json.token_usage || null,\n  error_status: $('Set — Normalize Analytics Input').item.json.error_status || null\n}) }}",
           "sendBody": true,
           "specifyBody": "json"
         },
@@ -1983,7 +2229,7 @@
           "url": "https://erp.heshly.com/api/method/heshly_core.api.ai.record_conversation_outcome",
           "method": "POST",
           "options": {},
-          "jsonBody": "={{ {\n  conversation_id: $('Set — Normalize Analytics Input').item.json.conversation.id || $('Set — Normalize Analytics Input').item.json.conversation,\n  tenant_id: $('Set — Normalize Analytics Input').item.json.business.id || $('Set — Normalize Analytics Input').item.json.business,\n  outcome: $('Set — Normalize Analytics Input').item.json.outcome || 'other',\n  completed: $('Set — Normalize Analytics Input').item.json.completed || false,\n  appointment_booked: $('Set — Normalize Analytics Input').item.json.appointment_booked || false\n} }}",
+          "jsonBody": "={{ JSON.stringify({\n  conversation_id: $('Set — Normalize Analytics Input').item.json.conversation?.id || $('Set — Normalize Analytics Input').item.json.conversation || \"\",\n  tenant_id: $('Set — Normalize Analytics Input').item.json.business?.id || $('Set — Normalize Analytics Input').item.json.business?.tenant_id || $('Set — Normalize Analytics Input').item.json.tenant_id || \"\",\n  outcome: $('Set — Normalize Analytics Input').item.json.outcome || 'other',\n  completed: $('Set — Normalize Analytics Input').item.json.completed || false,\n  appointment_booked: $('Set — Normalize Analytics Input').item.json.appointment_booked || false\n}) }}",
           "sendBody": true,
           "specifyBody": "json"
         },
@@ -2012,9 +2258,9 @@
                 "id": "db2e7be8-1baf-4f53-a5bd-be4ad43d159b",
                 "operator": {
                   "type": "string",
-                  "operation": "notEmpty"
+                  "operation": "isNotEmpty"
                 },
-                "leftValue": "={{ $('Set — Normalize Analytics Input').item.json.appointment_booked || $('Set — Normalize Analytics Input').item.json.conversion_outcome }}",
+                "leftValue": "={{ $('Set — Normalize Analytics Input').item.json.appointment_conversion || $('Set — Normalize Analytics Input').item.json.appointment_booked || $('Set — Normalize Analytics Input').item.json.conversion_outcome || '' }}",
                 "rightValue": ""
               }
             ]
@@ -2034,7 +2280,7 @@
           "url": "https://erp.heshly.com/api/method/heshly_core.api.ai.record_conversion_attribution",
           "method": "POST",
           "options": {},
-          "jsonBody": "={{ {\n  conversation_id: $('Set — Normalize Analytics Input').item.json.conversation,\n  tenant_id: $('Set — Normalize Analytics Input').item.json.business,\n  customer_id: $('Set — Normalize Analytics Input').item.json.customer,\n  lead_id: $('Set — Normalize Analytics Input').item.json.lead,\n  intent: $('Set — Normalize Analytics Input').item.json.intent,\n  ai_interaction_id: $('HTTP Request — Record AI Interaction').item.json.interaction_id || null,\n  appointment_id: $('Set — Normalize Analytics Input').item.json.appointment_id || null,\n  conversion_id: $('Set — Normalize Analytics Input').item.json.conversion_id || null,\n  attribution_source: 'AI_RECEPTIONIST'\n} }}",
+          "jsonBody": "={{ JSON.stringify({\n  conversation_id: $('Set — Normalize Analytics Input').item.json.conversation?.id || $('Set — Normalize Analytics Input').item.json.conversation || \"\",\n  tenant_id: $('Set — Normalize Analytics Input').item.json.business?.id || $('Set — Normalize Analytics Input').item.json.business?.tenant_id || $('Set — Normalize Analytics Input').item.json.tenant_id || \"\",\n  customer_id: $('Set — Normalize Analytics Input').item.json.customer?.id || $('Set — Normalize Analytics Input').item.json.customer || \"\",\n  lead_id: $('Set — Normalize Analytics Input').item.json.lead?.id || $('Set — Normalize Analytics Input').item.json.lead || \"\",\n  intent: $('Set — Normalize Analytics Input').item.json.intent || \"\",\n  ai_interaction_id: $('HTTP Request — Record AI Interaction').item.json.message?.interaction_id || $('HTTP Request — Record AI Interaction').item.json.interaction_id || null,\n  appointment_id: $('Set — Normalize Analytics Input').item.json.appointment_id || null,\n  conversion_id: $('Set — Normalize Analytics Input').item.json.conversion_id || null,\n  attribution_source: 'AI_RECEPTIONIST'\n}) }}",
           "sendBody": true,
           "specifyBody": "json"
         },
@@ -2052,7 +2298,7 @@
           "url": "https://erp.heshly.com/api/method/heshly_core.api.ai.update_ai_analytics",
           "method": "POST",
           "options": {},
-          "jsonBody": "={{ {\n  tenant_id: $('Set — Normalize Analytics Input').item.json.business.id || $('Set — Normalize Analytics Input').item.json.business,\n  conversation_id: $('Set — Normalize Analytics Input').item.json.conversation.id || $('Set — Normalize Analytics Input').item.json.conversation,\n  customer_id: $('Set — Normalize Analytics Input').item.json.customer,\n  lead_id: $('Set — Normalize Analytics Input').item.json.lead,\n  intent: $('Set — Normalize Analytics Input').item.json.intent,\n  intent_confidence: $('Set — Normalize Analytics Input').item.json.intent_confidence,\n  ai_response: $('Set — Normalize Analytics Input').item.json.ai_response,\n  next_action: $('Set — Normalize Analytics Input').item.json.next_action,\n  appointment_booked: $('Set — Normalize Analytics Input').item.json.appointment_booked || false,\n  conversion_outcome: $('Set — Normalize Analytics Input').item.json.conversion_outcome || null,\n  timestamp: $('Set — Normalize Analytics Input').item.json.timestamp\n} }}",
+          "jsonBody": "={{ JSON.stringify({\n  tenant_id: $('Set — Normalize Analytics Input').item.json.business?.id || $('Set — Normalize Analytics Input').item.json.business?.tenant_id || $('Set — Normalize Analytics Input').item.json.tenant_id || \"\",\n  conversation_id: $('Set — Normalize Analytics Input').item.json.conversation?.id || $('Set — Normalize Analytics Input').item.json.conversation || \"\",\n  customer_id: $('Set — Normalize Analytics Input').item.json.customer?.id || $('Set — Normalize Analytics Input').item.json.customer || \"\",\n  lead_id: $('Set — Normalize Analytics Input').item.json.lead?.id || $('Set — Normalize Analytics Input').item.json.lead || \"\",\n  intent: $('Set — Normalize Analytics Input').item.json.intent || \"\",\n  intent_confidence: $('Set — Normalize Analytics Input').item.json.intent_confidence ?? null,\n  ai_response: $('Set — Normalize Analytics Input').item.json.ai_response || \"\",\n  next_action: $('Set — Normalize Analytics Input').item.json.next_action || \"\",\n  appointment_booked: $('Set — Normalize Analytics Input').item.json.appointment_booked || false,\n  conversion_outcome: $('Set — Normalize Analytics Input').item.json.conversion_outcome || null,\n  timestamp: $('Set — Normalize Analytics Input').item.json.timestamp\n}) }}",
           "sendBody": true,
           "specifyBody": "json"
         },
