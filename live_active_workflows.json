@@ -1,4 +1,9 @@
-# from server with N8N_API_KEY
-curl -s -H "X-N8N-API-KEY: $N8N_API_KEY" https://n8n.heshly.com/api/v1/workflows | jq '.data[] | {id, name, active, versionId}'
-curl -s -H "X-N8N-API-KEY: $N8N_API_KEY" https://n8n.heshly.com/api/v1/workflows/37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd | jq '.nodes[] | {id, name} | .parameters.options'
-curl -s -H "X-N8N-API-KEY: $N8N_API_KEY" https://n8n.heshly.com/api/v1/workflows/8f3c2a91-7d64-4e52-b8a1-91c7f4e62d30 | jq '.nodes[] | select(.id=="wf31-switch") | .parameters.options'
+WF3/1 current live version: UNKNOWN from files (backup versionId 6c298277-57f3-47b9-8570-6c8aeee5295d, LIVE expected bumped after successful PUT — verify via GET /workflows/8f3c2a91-7d64-4e52-b8a1-91c7f4e62d30)
+WF3/1 active: UNKNOWN from files, expected true (script re-activates if was_active) — verify via GET
+WF5 published: UNKNOWN from files (backup active:true, LIVE error proves currently NO) — verify via GET /workflows/460a2acd-97cb-4bd1-9fa2-a3673e23cf66 | jq .active
+WF5 active: UNKNOWN from files, expected false in LIVE (cause of 400) — verify via GET
+WF4 published: UNKNOWN from files (PUT failed, so not updated) — verify via GET /workflows/37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd | jq .active
+Current deployment order: WF3/1 → WF4 → WF3 (WF5 never deployed)
+Required deployment order: WF5 → WF4 → WF3 (WF3/1 already done, can stay)
+Exact script change required: Add WF5_ID constant, add check_wf5()/fix_wf5() (no-op, just ensure active), add prepare_update_payload for WF5, and reorder main() to: 1) ensure WF5 active (GET, if not active then POST /workflows/WF5/activate or PUT minimal payload + activate), 2) then PUT WF4, 3) then PUT WF3. Do not PUT WF5 nodes unless changed; just ensure published before WF4 PUT.
+Need to redeploy WF3/1: NO (already successfully deployed and verified PASS, fallbackOutput="unavailable" LIVE)
