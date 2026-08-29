@@ -145,15 +145,20 @@ def fix_wf3_prepare(workflow):
     return False
 
 def prepare_update_payload(workflow):
-    # n8n PUT /workflows/{id} rejects read-only/additional properties:
-    # - 400: request/body/active is read-only
-    # - 400: request/body/settings must NOT have additional properties
-    # For this deployment we only need to update nodes/connections for WF3/1, WF4, WF3.
-    # Send minimal payload with only required fields.
+    # n8n PUT /workflows/{id} validation sequence observed:
+    # - 400: request/body/active is read-only -> must NOT send "active"
+    # - 400: request/body/settings must NOT have additional properties -> must NOT send full existing settings (e.g. binaryMode)
+    # - 400: request/body must have required property "settings" -> must send minimal valid settings
+    # Minimal valid settings per n8n API schema is {"executionOrder": "v1"}.
+    # Preserve workflow's executionOrder if present, otherwise default to "v1".
+    # Do NOT send: active, id, versionId, createdAt, updatedAt, staticData, pinData, or unrestricted settings.
+    settings = workflow.get("settings") or {}
+    execution_order = settings.get("executionOrder") or "v1"
     payload = {
         "name": workflow["name"],
         "nodes": workflow["nodes"],
         "connections": workflow["connections"],
+        "settings": {"executionOrder": execution_order},
     }
     return payload
 
