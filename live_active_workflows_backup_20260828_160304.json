@@ -1,5 +1,924 @@
 [
   {
+    "id": "heshly-ai-action-booking-v1",
+    "name": "Workflow 3 — AI Action / Booking",
+    "nodes": [
+      {
+        "id": "4b13dd31-9d8b-462f-8141-f9e21324a208",
+        "name": "Set — Normalize Action Input",
+        "type": "n8n-nodes-base.set",
+        "position": [
+          224,
+          288
+        ],
+        "parameters": {
+          "options": {},
+          "assignments": {
+            "assignments": [
+              {
+                "id": "next_action",
+                "name": "next_action",
+                "type": "string",
+                "value": "={{ (($json.data?.action || $json.body?.data?.action || $json.body?.action || $json.action || $json.data?.next_action || $json.next_action || \"\") + \"\").toUpperCase() }}"
+              },
+              {
+                "id": "action",
+                "name": "action",
+                "type": "string",
+                "value": "={{ $json.data?.action || $json.body?.data?.action || $json.body?.action || $json.action || $json.data?.next_action || $json.next_action || \"\" }}"
+              },
+              {
+                "id": "service",
+                "name": "service",
+                "type": "string",
+                "value": "={{ $json.data?.entities?.service || $json.body?.data?.entities?.service || $json.entities?.service || $json.data?.service || $json.body?.data?.service || $json.body?.service || $json.service || \"\" }}"
+              },
+              {
+                "id": "date",
+                "name": "date",
+                "type": "string",
+                "value": "={{ $json.data?.entities?.date || $json.body?.data?.entities?.date || $json.entities?.date || $json.data?.date || $json.body?.data?.date || $json.body?.date || $json.date || \"\" }}"
+              },
+              {
+                "id": "tenant_id",
+                "name": "tenant_id",
+                "type": "string",
+                "value": "={{ $json.data?.tenant_id || $json.body?.data?.tenant_id || $json.tenant_id || $json.data?.business?.tenant_id || $json.data?.business?.id || $json.business?.tenant_id || $json.business?.id || $json.body?.data?.business?.tenant_id || $json.body?.data?.business?.id || $json.body?.business?.tenant_id || $json.body?.business?.id || \"\" }}"
+              },
+              {
+                "id": "entities",
+                "name": "entities",
+                "type": "object",
+                "value": "={{ $json.data?.entities || $json.body?.data?.entities || $json.entities || { service: ($json.data?.service || $json.service || \"\"), date: ($json.data?.date || $json.date || \"\") } }}"
+              },
+              {
+                "id": "business",
+                "name": "business",
+                "type": "object",
+                "value": "={{ $json.data?.business || $json.body?.data?.business || $json.body?.business || $json.business || {} }}"
+              },
+              {
+                "id": "customer",
+                "name": "customer",
+                "type": "object",
+                "value": "={{ $json.data?.customer || $json.body?.data?.customer || $json.body?.customer || $json.customer || {} }}"
+              },
+              {
+                "id": "lead",
+                "name": "lead",
+                "type": "object",
+                "value": "={{ $json.data?.lead || $json.body?.data?.lead || $json.body?.lead || $json.lead || {} }}"
+              },
+              {
+                "id": "wf3-response",
+                "name": "response",
+                "type": "string",
+                "value": "={{ $json.data?.response || $json.body?.response || $json.response || \"\" }}"
+              },
+              {
+                "id": "wf3-intent",
+                "name": "intent",
+                "type": "string",
+                "value": "={{ $json.data?.intent || $json.body?.intent || $json.intent || \"\" }}"
+              },
+              {
+                "id": "wf3-confidence",
+                "name": "confidence",
+                "type": "number",
+                "value": "={{ $json.data?.confidence || $json.body?.confidence || $json.confidence || 0 }}"
+              },
+              {
+                "id": "wf3-conversation",
+                "name": "conversation",
+                "type": "object",
+                "value": "={{ $json.data?.conversation || $json.body?.conversation || $json.conversation || {} }}"
+              },
+              {
+                "id": "wf3-phone",
+                "name": "phone_number",
+                "type": "string",
+                "value": "={{ $json.data?.phone_number || $json.body?.phone_number || $json.phone_number || \"\" }}"
+              },
+              {
+                "id": "wf3-phone-id",
+                "name": "phone_number_id",
+                "type": "string",
+                "value": "={{ $json.data?.phone_number_id || $json.body?.phone_number_id || $json.phone_number_id || \"\" }}"
+              }
+            ]
+          }
+        },
+        "typeVersion": 3.4
+      },
+      {
+        "id": "dbdee639-9391-4f0b-836e-593231bf3358",
+        "name": "Switch — Next Action",
+        "type": "n8n-nodes-base.switch",
+        "position": [
+          448,
+          256
+        ],
+        "parameters": {
+          "rules": {
+            "values": [
+              {
+                "outputKey": "check_availability",
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "leftValue": "",
+                    "caseSensitive": true,
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "switch-check-availability",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ $json.next_action }}",
+                      "rightValue": "CHECK_AVAILABILITY"
+                    }
+                  ]
+                },
+                "renameOutput": true
+              },
+              {
+                "outputKey": "book_appointment",
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "leftValue": "",
+                    "caseSensitive": true,
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "switch-book-appointment",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ $json.next_action }}",
+                      "rightValue": "BOOK_APPOINTMENT"
+                    }
+                  ]
+                },
+                "renameOutput": true
+              },
+              {
+                "outputKey": "update_lead_customer",
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "leftValue": "",
+                    "caseSensitive": true,
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "switch-update-lead-customer",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ $json.next_action }}",
+                      "rightValue": "UPDATE_LEAD_CUSTOMER"
+                    }
+                  ]
+                },
+                "renameOutput": true
+              },
+              {
+                "outputKey": "other",
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "leftValue": "",
+                    "caseSensitive": true,
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "switch-other",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ $json.next_action }}",
+                      "rightValue": "OTHER"
+                    }
+                  ]
+                },
+                "renameOutput": true
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "none"
+          }
+        },
+        "typeVersion": 3.2
+      },
+      {
+        "id": "wf3-exec-wf31",
+        "name": "Execute Workflow — WF3/1",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "position": [
+          672,
+          0
+        ],
+        "parameters": {
+          "options": {},
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "8f3c2a91-7d64-4e52-b8a1-91c7f4e62d30",
+            "cachedResultUrl": "/workflow/8f3c2a91-7d64-4e52-b8a1-91c7f4e62d30",
+            "cachedResultName": "WF3/1 — AI Action — Check Availability"
+          },
+          "workflowInputs": {
+            "value": {
+              "data": "={{ {\n  Business: $json.business,\n  Customer: $json.customer,\n  Entities: $json.entities || {\n    service: $json.service,\n    date: $json.date\n  },\n  next_action: $json.next_action\n} }}"
+            },
+            "schema": [
+              {
+                "id": "data",
+                "type": "object",
+                "display": true,
+                "removed": false,
+                "required": false,
+                "displayName": "data",
+                "defaultMatch": false,
+                "canBeUsedToMatch": true
+              }
+            ],
+            "mappingMode": "defineBelow",
+            "matchingColumns": [
+              "data"
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "typeVersion": 1.2
+      },
+      {
+        "id": "execute-wf3-2-book",
+        "name": "Execute Workflow — WF3/2",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "position": [
+          672,
+          192
+        ],
+        "parameters": {
+          "options": {},
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "heshly-ai-action-book-v2",
+            "cachedResultUrl": "/workflow/heshly-ai-action-book-v2",
+            "cachedResultName": "WF3/2 — AI Action — Book Appointment"
+          },
+          "workflowInputs": {
+            "value": {
+              "data": "={{ $json }}"
+            },
+            "schema": [
+              {
+                "id": "data",
+                "type": "object",
+                "display": true,
+                "removed": false,
+                "required": false,
+                "displayName": "data",
+                "defaultMatch": false,
+                "canBeUsedToMatch": true
+              }
+            ],
+            "mappingMode": "defineBelow",
+            "matchingColumns": [
+              "data"
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": true
+          }
+        },
+        "typeVersion": 1.2
+      },
+      {
+        "id": "execute-wf3-3-update-crm",
+        "name": "Execute Workflow — WF3/3",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "position": [
+          672,
+          384
+        ],
+        "parameters": {
+          "options": {},
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "heshly-ai-action-update-crm-v1",
+            "cachedResultUrl": "/workflow/heshly-ai-action-update-crm-v1",
+            "cachedResultName": "WF3/3 — AI Action — Update Lead / Customer"
+          },
+          "workflowInputs": {
+            "value": {
+              "data": "={{ $json }}"
+            },
+            "schema": [
+              {
+                "id": "data",
+                "type": "object",
+                "display": true,
+                "removed": false,
+                "required": false,
+                "displayName": "data",
+                "defaultMatch": false,
+                "canBeUsedToMatch": true
+              }
+            ],
+            "mappingMode": "defineBelow",
+            "matchingColumns": [
+              "data"
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": true
+          }
+        },
+        "typeVersion": 1.2
+      },
+      {
+        "id": "wf3-exec-wf34",
+        "name": "Execute Workflow — WF3/4",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "position": [
+          672,
+          576
+        ],
+        "parameters": {
+          "options": {},
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "heshly-ai-action-other-v1",
+            "cachedResultUrl": "/workflow/heshly-ai-action-other-v1",
+            "cachedResultName": "WF3/4 — AI Action — Other / Fallback"
+          },
+          "workflowInputs": {
+            "value": {},
+            "schema": [],
+            "mappingMode": "defineBelow",
+            "matchingColumns": [],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": true
+          }
+        },
+        "typeVersion": 1.2
+      },
+      {
+        "id": "d74550f7-4423-4937-8cde-862a0a8238c6",
+        "name": "Execute Workflow Trigger",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "position": [
+          0,
+          288
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "wf3-prepare-whatsapp-response",
+        "name": "Prepare WhatsApp Response",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          896,
+          288
+        ],
+        "parameters": {
+          "jsCode": "const action = $input.first().json || {};\nconst original = $(\"Set — Normalize Action Input\").item.json || {};\n\nlet response = action.message || action.response || original.response || \"\";\n\nconst actionName = String(\n  action.action || action.next_action || original.next_action || \"\"\n).toUpperCase();\n\nconst available =\n  action.available === true ||\n  String(action.available).toLowerCase() === \"true\";\n\nconst unavailable =\n  action.available === false ||\n  String(action.available).toLowerCase() === \"false\";\n\nif (!response && actionName === \"CHECK_AVAILABILITY\") {\n  if (available && Array.isArray(action.slots) && action.slots.length) {\n    response = `The requested service is available. Available times: ${action.slots.join(\", \")}`;\n  } else if (unavailable) {\n    response = \"Unfortunately, that time is not available.\";\n  }\n}\n\nreturn [{\n  json: {\n    business: original.business || {},\n    customer: original.customer || {},\n    lead: original.lead || {},\n    conversation: original.conversation || {},\n    response,\n    intent: original.intent || \"\",\n    next_action: original.next_action || action.next_action || action.action || \"OTHER\",\n    phone_number: original.phone_number || \"\",\n    phone_number_id: original.phone_number_id || \"\",\n    action_result: action\n  }\n}];"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "wf3-execute-wf4",
+        "name": "Execute Workflow — WF4 WhatsApp Response",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "position": [
+          1120,
+          288
+        ],
+        "parameters": {
+          "options": {},
+          "workflowId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd"
+          }
+        },
+        "typeVersion": 1
+      }
+    ],
+    "active": true,
+    "settings": {
+      "binaryMode": "separate",
+      "executionOrder": "v1"
+    },
+    "versionId": "12506b6b-d40b-4d73-b1ae-02ee676192e6",
+    "staticData": null,
+    "connections": {
+      "Switch — Next Action": {
+        "main": [
+          [
+            {
+              "node": "Execute Workflow — WF3/1",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Execute Workflow — WF3/2",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Execute Workflow — WF3/3",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Execute Workflow — WF3/4",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow Trigger": {
+        "main": [
+          [
+            {
+              "node": "Set — Normalize Action Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare WhatsApp Response": {
+        "main": [
+          [
+            {
+              "node": "Execute Workflow — WF4 WhatsApp Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow — WF3/1": {
+        "main": [
+          [
+            {
+              "node": "Prepare WhatsApp Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow — WF3/2": {
+        "main": [
+          [
+            {
+              "node": "Prepare WhatsApp Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow — WF3/3": {
+        "main": [
+          [
+            {
+              "node": "Prepare WhatsApp Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow — WF3/4": {
+        "main": [
+          [
+            {
+              "node": "Prepare WhatsApp Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Set — Normalize Action Input": {
+        "main": [
+          [
+            {
+              "node": "Switch — Next Action",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "heshly-ai-receptionist-v3",
+    "name": "Workflow 2 — AI Receptionist",
+    "nodes": [
+      {
+        "id": "ai-receptionist-incoming-webhook",
+        "name": "Execute Workflow Trigger",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "position": [
+          304,
+          0
+        ],
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "business",
+                "type": "object"
+              },
+              {
+                "name": "customer",
+                "type": "object"
+              },
+              {
+                "name": "lead",
+                "type": "object"
+              },
+              {
+                "name": "conversation",
+                "type": "object"
+              },
+              {
+                "name": "message",
+                "type": "object"
+              },
+              {
+                "name": "business_knowledge",
+                "type": "object"
+              },
+              {
+                "name": "tenant_id"
+              },
+              {
+                "name": "business_id"
+              },
+              {
+                "name": "phone_number"
+              },
+              {
+                "name": "phone_number_id"
+              },
+              {
+                "name": "conversation_history",
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "typeVersion": 1.1
+      },
+      {
+        "id": "normalize-ai-input",
+        "name": "Set — Normalize AI Input",
+        "type": "n8n-nodes-base.set",
+        "position": [
+          528,
+          0
+        ],
+        "parameters": {
+          "options": {},
+          "assignments": {
+            "assignments": [
+              {
+                "id": "business",
+                "name": "business",
+                "type": "object",
+                "value": "={{ $json.data?.business || $json.body?.business || $json.business || {} }}"
+              },
+              {
+                "id": "customer",
+                "name": "customer",
+                "type": "object",
+                "value": "={{ $json.data?.customer || $json.body?.customer || $json.customer || {} }}"
+              },
+              {
+                "id": "lead",
+                "name": "lead",
+                "type": "object",
+                "value": "={{ $json.data?.lead || $json.body?.lead || $json.lead || {} }}"
+              },
+              {
+                "id": "conversation",
+                "name": "conversation",
+                "type": "object",
+                "value": "={{ $json.data?.conversation || $json.body?.conversation || $json.conversation || {} }}"
+              },
+              {
+                "id": "message",
+                "name": "message",
+                "type": "object",
+                "value": "={{ $json.data?.message || $json.body?.message || $json.message || {} }}"
+              },
+              {
+                "id": "business_knowledge",
+                "name": "business_knowledge",
+                "type": "object",
+                "value": "={{ $json.data?.business_knowledge || $json.body?.business_knowledge || $json.business_knowledge || {} }}"
+              }
+            ]
+          }
+        },
+        "typeVersion": 3.4
+      },
+      {
+        "id": "ai-receptionist-agent",
+        "name": "AI Agent — AI Receptionist",
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "position": [
+          752,
+          0
+        ],
+        "parameters": {
+          "text": "={{ JSON.stringify({ business: $json.business, customer: $json.customer, lead: $json.lead, conversation: $json.conversation, conversation_history: $json.conversation_history, message: $json.message, business_knowledge: $json.business_knowledge }) }}",
+          "options": {
+            "systemMessage": "You are the AI Receptionist. Classify the latest customer message and return only structured output. next_action MUST be exactly one of CHECK_AVAILABILITY, BOOK_APPOINTMENT, UPDATE_LEAD_CUSTOMER, or OTHER. Never return REPLY. Use CHECK_AVAILABILITY for questions about whether a service or requested time is available. Use BOOK_APPOINTMENT only when the customer asks to make or confirm a booking. Use UPDATE_LEAD_CUSTOMER only for explicit profile changes. Use OTHER for greetings, general questions, or clarification. Do not ask for a clinic or business name when the supplied business context is sufficient."
+          },
+          "promptType": "define",
+          "hasOutputParser": true
+        },
+        "typeVersion": 3.1
+      },
+      {
+        "id": "openrouter-chat-model",
+        "name": "OpenRouter Chat Model",
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+        "position": [
+          768,
+          224
+        ],
+        "parameters": {
+          "options": {
+            "maxTokens": 2000
+          }
+        },
+        "credentials": {
+          "openRouterApi": {
+            "id": "GcGJq1Iw5o5FTjEN",
+            "name": "OpenRouter account"
+          }
+        },
+        "typeVersion": 1
+      },
+      {
+        "id": "ai-structured-output-parser",
+        "name": "Structured Output Parser",
+        "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+        "position": [
+          896,
+          224
+        ],
+        "parameters": {
+          "schemaType": "manual",
+          "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"intent\": {\n      \"type\": \"string\"\n    },\n    \"entities\": {\n      \"type\": \"object\"\n    },\n    \"next_action\": {\n      \"type\": \"string\"\n    },\n    \"response\": {\n      \"type\": \"string\"\n    },\n    \"confidence\": {\n      \"type\": \"number\",\n      \"minimum\": 0,\n      \"maximum\": 1\n    }\n  },\n  \"required\": [\n    \"intent\",\n    \"entities\",\n    \"next_action\",\n    \"response\",\n    \"confidence\"\n  ]\n}"
+        },
+        "typeVersion": 1.3
+      },
+      {
+        "id": "normalize-ai-output",
+        "name": "Code — Normalize AI Output",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          1104,
+          0
+        ],
+        "parameters": {
+          "jsCode": "\nconst input = $json;\n\nlet ai = input.output ?? input;\n\nif (typeof ai === \"string\") {\n  try {\n    ai = JSON.parse(ai);\n  } catch {\n    ai = {};\n  }\n}\n\nif (ai.output && typeof ai.output === \"object\") {\n  ai = ai.output;\n}\n\nconst intent =\n  typeof ai.intent === \"string\"\n    ? ai.intent.trim()\n    : \"OTHER\";\n\nconst entities =\n  ai.entities && typeof ai.entities === \"object\"\n    ? ai.entities\n    : {};\n\nconst allowed = new Set([\n  \"CHECK_AVAILABILITY\",\n  \"BOOK_APPOINTMENT\",\n  \"UPDATE_LEAD_CUSTOMER\",\n  \"OTHER\"\n]);\n\nconst candidate =\n  typeof ai.next_action === \"string\"\n    ? ai.next_action.trim().toUpperCase()\n    : \"OTHER\";\n\nconst next_action = allowed.has(candidate)\n  ? candidate\n  : \"OTHER\";\n\nconst response =\n  typeof ai.response === \"string\"\n    ? ai.response.trim()\n    : \"I can help with that.\";\n\nconst confidence = Math.max(\n  0,\n  Math.min(\n    1,\n    Number.isFinite(Number(ai.confidence))\n      ? Number(ai.confidence)\n      : 0\n  )\n);\n\nconst original = $(\"Set — Normalize AI Input\").item.json;\n\nreturn [{\n  json: {\n    business: original.business || {},\n    customer: original.customer || {},\n    lead: original.lead || {},\n    conversation: original.conversation || {},\n    message: original.message || {},\n    business_knowledge: original.business_knowledge || {},\n\n    phone_number:\n      original.phone_number ||\n      original.message?.phone_number ||\n      original.message?.from ||\n      \"\",\n\n    phone_number_id:\n      original.phone_number_id ||\n      original.message?.phone_number_id ||\n      \"\",\n\n    intent,\n    entities,\n    next_action,\n    response,\n    confidence\n  }\n}];\n"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "wf2-exec-wf3-parent",
+        "name": "Execute Workflow — WF3 Parent",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "position": [
+          1328,
+          0
+        ],
+        "parameters": {
+          "options": {},
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "heshly-ai-action-booking-v1",
+            "cachedResultUrl": "/workflow/heshly-ai-action-booking-v1",
+            "cachedResultName": "Workflow 3 — AI Action / Booking"
+          },
+          "workflowInputs": {
+            "value": {
+              "data": "={{ $json }}"
+            },
+            "schema": [
+              {
+                "id": "data",
+                "type": "object",
+                "display": true,
+                "removed": false,
+                "required": false,
+                "displayName": "data",
+                "defaultMatch": false,
+                "canBeUsedToMatch": true
+              }
+            ],
+            "mappingMode": "defineBelow",
+            "matchingColumns": [
+              "data"
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "typeVersion": 1.2
+      }
+    ],
+    "active": true,
+    "settings": {
+      "binaryMode": "separate",
+      "executionOrder": "v1"
+    },
+    "versionId": "74e679e3-faa2-4af2-b245-bedc9eec0c80",
+    "staticData": null,
+    "connections": {
+      "OpenRouter Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Agent — AI Receptionist",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow Trigger": {
+        "main": [
+          [
+            {
+              "node": "Set — Normalize AI Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Structured Output Parser": {
+        "ai_outputParser": [
+          [
+            {
+              "node": "AI Agent — AI Receptionist",
+              "type": "ai_outputParser",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Set — Normalize AI Input": {
+        "main": [
+          [
+            {
+              "node": "AI Agent — AI Receptionist",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Agent — AI Receptionist": {
+        "main": [
+          [
+            {
+              "node": "Code — Normalize AI Output",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Code — Normalize AI Output": {
+        "main": [
+          [
+            {
+              "node": "Execute Workflow — WF3 Parent",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "heshly-ai-action-other-v1",
+    "name": "WF3/4 — AI Action — Other / Fallback",
+    "nodes": [
+      {
+        "id": "wf34-trigger",
+        "name": "Execute Workflow Trigger — WF3/4",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "position": [
+          304,
+          304
+        ],
+        "parameters": {
+          "inputSource": "passthrough"
+        },
+        "typeVersion": 1.1
+      },
+      {
+        "id": "wf34-normalize",
+        "name": "Set — Normalize Fallback Input",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          528,
+          304
+        ],
+        "parameters": {
+          "jsCode": "const envelope = $input.first().json || {};\nconst input = envelope.data || envelope;\nconst body = input.body && typeof input.body === 'object' ? input.body : input;\nconst business = body.business || body.Business || {};\n\nreturn [{\n  json: {\n    next_action: body.next_action || body['Next Action'] || 'OTHER',\n    business,\n    customer: body.customer || body.Customer || {},\n    lead: body.lead || body.Lead || {},\n    conversation: body.conversation || body.Conversation || {},\n    message: body.message || body.Message || {},\n    tenant_id: body.tenant_id || business.id || business.tenant_id || ''\n  }\n}];"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "wf34-result",
+        "name": "Set — Fallback Result",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          752,
+          304
+        ],
+        "parameters": {
+          "jsCode": "const input = $input.first().json || {};\n\nreturn [{\n  json: {\n    success: true,\n    action: 'OTHER',\n    status: 'FALLBACK',\n    next_action: 'OTHER',\n    message: 'Action received but no specific workflow is configured.',\n    business: input.business || {},\n    customer: input.customer || {},\n    lead: input.lead || {},\n    tenant_id: input.tenant_id || ''\n  }\n}];"
+        },
+        "typeVersion": 2
+      }
+    ],
+    "active": true,
+    "settings": {
+      "binaryMode": "separate",
+      "executionOrder": "v1"
+    },
+    "versionId": "63508df2-2729-46e3-b4e9-eb25ebcbd9df",
+    "staticData": null,
+    "connections": {
+      "Set — Normalize Fallback Input": {
+        "main": [
+          [
+            {
+              "node": "Set — Fallback Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow Trigger — WF3/4": {
+        "main": [
+          [
+            {
+              "node": "Set — Normalize Fallback Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
     "id": "9db30e75-031f-4a83-83d6-2face7441ba0",
     "name": "WF1 — WhatsApp Incoming / CRM Intake v1",
     "nodes": [
@@ -441,804 +1360,92 @@
     }
   },
   {
-    "id": "8f3c2a91-7d64-4e52-b8a1-91c7f4e62d30",
-    "name": "WF3/1 — AI Action — Check Availability",
+    "id": "61d65266-2c38-4e41-8b85-b311df0f31ec",
+    "name": "Workflow 6 — Scheduled / Background Processing",
     "nodes": [
       {
-        "id": "wf31-trigger",
-        "name": "Execute Workflow Trigger",
-        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "id": "schedule-trigger-wf6",
+        "name": "Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
         "position": [
-          240,
-          320
+          208,
+          0
         ],
         "parameters": {
-          "workflowInputs": {
-            "values": [
+          "rule": {
+            "interval": [
               {
-                "name": "data",
-                "type": "object"
+                "field": "minutes",
+                "minutesInterval": 15
               }
             ]
           }
         },
-        "typeVersion": 1.1
+        "typeVersion": 1.2
       },
       {
-        "id": "wf31-normalize",
-        "name": "Set — Availability Input",
-        "type": "n8n-nodes-base.set",
-        "position": [
-          464,
-          320
-        ],
-        "parameters": {
-          "options": {},
-          "assignments": {
-            "assignments": [
-              {
-                "id": "wf31-business",
-                "name": "Business",
-                "type": "object",
-                "value": "={{ $json.data?.Business || $json.Business || $json.business }}"
-              },
-              {
-                "id": "wf31-customer",
-                "name": "Customer",
-                "type": "object",
-                "value": "={{ $json.data?.Customer || $json.Customer || $json.customer }}"
-              },
-              {
-                "id": "wf31-entities",
-                "name": "Entities",
-                "type": "object",
-                "value": "={{ $json.data?.Entities || $json.Entities || $json.entities }}"
-              },
-              {
-                "id": "wf31-next-action",
-                "name": "next_action",
-                "type": "string",
-                "value": "={{ $json.data?.next_action || $json.next_action }}"
-              }
-            ]
-          }
-        },
-        "typeVersion": 3.4
-      },
-      {
-        "id": "wf31-http",
-        "name": "HTTP Request — Check Availability",
+        "id": "cad99315-14fe-446f-a84b-ef40d37de1fd",
+        "name": "HTTP Request — Get Pending Follow-ups",
         "type": "n8n-nodes-base.httpRequest",
         "position": [
-          688,
-          320
+          432,
+          0
         ],
         "parameters": {
-          "url": "https://erp.heshly.com/api/method/heshly_core.api.availability.check_availability",
-          "body": "={{ JSON.stringify({\n  service: $json.entities?.service || '',\n  preferred_date: ($json.entities?.date || '').substring(0,10),\n  duration_minutes: $json.entities?.duration_minutes || 30,\n  tenant_id: $json.business?.tenant_id || $json.business?.id || ''\n}) }}",
-          "method": "POST",
-          "options": {
-            "response": {
-              "response": {
-                "neverError": true,
-                "responseFormat": "json"
-              }
-            }
-          },
-          "sendBody": true,
-          "contentType": "raw",
-          "rawContentType": "application/json"
-        },
-        "typeVersion": 4.2
-      },
-      {
-        "id": "wf31-switch",
-        "name": "Switch — Availability Status",
-        "type": "n8n-nodes-base.switch",
-        "position": [
-          912,
-          320
-        ],
-        "parameters": {
-          "rules": {
-            "values": [
-              {
-                "outputKey": "available",
-                "conditions": {
-                  "options": {
-                    "version": 2,
-                    "leftValue": "",
-                    "caseSensitive": true,
-                    "typeValidation": "strict"
-                  },
-                  "combinator": "and",
-                  "conditions": [
-                    {
-                      "id": "wf31-true-condition",
-                      "operator": {
-                        "type": "string",
-                        "operation": "equals"
-                      },
-                      "leftValue": "={{ String($json.message?.available ?? $json.available) }}",
-                      "rightValue": "true"
-                    }
-                  ]
-                },
-                "renameOutput": true
-              },
-              {
-                "outputKey": "unavailable",
-                "conditions": {
-                  "options": {
-                    "version": 2,
-                    "leftValue": "",
-                    "caseSensitive": true,
-                    "typeValidation": "strict"
-                  },
-                  "combinator": "and",
-                  "conditions": [
-                    {
-                      "id": "wf31-false-condition",
-                      "operator": {
-                        "type": "string",
-                        "operation": "equals"
-                      },
-                      "leftValue": "={{ String($json.message?.available ?? $json.available) }}",
-                      "rightValue": "false"
-                    }
-                  ]
-                },
-                "renameOutput": true
-              }
-            ]
-          },
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.followups.get_pending",
           "options": {}
         },
-        "typeVersion": 3.2
-      },
-      {
-        "id": "wf31-return-available",
-        "name": "Return — Available",
-        "type": "n8n-nodes-base.code",
-        "position": [
-          1136,
-          224
-        ],
-        "parameters": {
-          "jsCode": "const src = ($json.message && typeof $json.message === 'object') ? $json.message : $json;\nreturn [{ json: {\n  success: true,\n  action: 'CHECK_AVAILABILITY',\n  available: src.available ?? false,\n  service: src.service ?? null,\n  preferred_date: src.preferred_date ?? null,\n  slots: src.slots ?? []\n} }];"
-        },
-        "typeVersion": 2
-      },
-      {
-        "id": "wf31-return-unavailable",
-        "name": "Return — Unavailable",
-        "type": "n8n-nodes-base.code",
-        "position": [
-          1136,
-          416
-        ],
-        "parameters": {
-          "jsCode": "const src = ($json.message && typeof $json.message === 'object') ? $json.message : $json;\nreturn [{ json: {\n  success: true,\n  action: 'CHECK_AVAILABILITY',\n  available: false,\n  service: src.service ?? null,\n  preferred_date: src.preferred_date ?? null,\n  slots: src.slots ?? []\n} }];"
-        },
-        "typeVersion": 2
-      }
-    ],
-    "active": true,
-    "settings": {
-      "binaryMode": "separate",
-      "executionOrder": "v1"
-    },
-    "versionId": "6c298277-57f3-47b9-8570-6c8aeee5295d",
-    "staticData": null,
-    "connections": {
-      "Execute Workflow Trigger": {
-        "main": [
-          [
-            {
-              "node": "Set — Availability Input",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Set — Availability Input": {
-        "main": [
-          [
-            {
-              "node": "HTTP Request — Check Availability",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Switch — Availability Status": {
-        "main": [
-          [
-            {
-              "node": "Return — Available",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Return — Unavailable",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "HTTP Request — Check Availability": {
-        "main": [
-          [
-            {
-              "node": "Switch — Availability Status",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      }
-    }
-  },
-  {
-    "id": "heshly-ai-action-book-v2",
-    "name": "WF3/2 — AI Action — Book Appointment",
-    "nodes": [
-      {
-        "id": "wf3-2-trigger",
-        "name": "Execute Workflow Trigger",
-        "type": "n8n-nodes-base.executeWorkflowTrigger",
-        "position": [
-          0,
-          0
-        ],
-        "parameters": {
-          "workflowInputs": {
-            "values": [
-              {
-                "name": "data",
-                "type": "object"
-              }
-            ]
-          }
-        },
-        "typeVersion": 1.1
-      },
-      {
-        "id": "wf3-2-normalize",
-        "name": "Set — Normalize Booking Input",
-        "type": "n8n-nodes-base.code",
-        "position": [
-          300,
-          0
-        ],
-        "parameters": {
-          "mode": "runOnceForAllItems",
-          "jsCode": "const envelope = $input.first().json || {};\nconst input = envelope.data || envelope;\nconst body = input.body && typeof input.body === 'object' ? input.body : input;\n\nconst entities = body.Entities || body.entities || {};\nconst customer = body.Customer || body.customer || {};\nconst business = body.Business || body.business || {};\nconst scheduled = String(entities.scheduled_time || body.scheduled_time || '');\nconst preferred_date = entities.preferred_date || body.preferred_date || (scheduled ? scheduled.substring(0, 10) : '');\nconst preferred_time = entities.preferred_time || body.preferred_time || (scheduled.includes('T') ? scheduled.split('T')[1].substring(0, 8) : '');\n\nreturn [{\n  json: {\n    business,\n    customer,\n    lead: body.Lead || body.lead || {},\n    service: entities.service || body.service || '',\n    preferred_date,\n    preferred_time,\n    duration_minutes: entities.duration_minutes || body.duration_minutes || 30,\n    tenant_id: body.tenant_id || business.id || business.tenant_id || '',\n    customer_name: customer.name || body.customer_name || '',\n    customer_phone: customer.phone || body.customer_phone || '',\n    notes: entities.notes || body.notes || ''\n  }\n}];"
-        },
-        "typeVersion": 2
-      },
-      {
-        "id": "wf3-2-create-appointment",
-        "name": "HTTP Request — Create Appointment",
-        "type": "n8n-nodes-base.httpRequest",
-        "position": [
-          600,
-          0
-        ],
-        "parameters": {
-          "url": "https://erp.heshly.com/api/method/heshly_core.api.booking.book_appointment",
-          "method": "POST",
-          "options": {
-            "response": {
-              "response": {
-                "neverError": true,
-                "responseFormat": "json"
-              }
-            },
-            "alwaysOutputData": true
-          },
-          "jsonBody": "={{ JSON.stringify({ customer_name: $json.customer?.name || $json.customer_name || \"Customer\", customer_phone: $json.customer?.phone || $json.customer_phone || \"\", service: $json.service || \"\", scheduled_time: $json.scheduled_time || $json.appointment_date || $json.date || (($json.preferred_date || \"\") + \"T\" + ($json.preferred_time || \"00:00:00\")) , duration_minutes: $json.duration_minutes || 30, notes: $json.notes || $json.lead?.notes || null, tenant_id: $json.tenant_id || $json.business?.id || $json.business?.tenant_id || $json.business_id || \"\" }) }}",
-          "sendBody": true,
-          "contentType": "json",
-          "sendHeaders": true,
-          "headerParameters": {
-            "parameters": [
-              {
-                "name": "Content-Type",
-                "value": "application/json"
-              }
-            ]
-          }
-        },
         "typeVersion": 4.2
       },
       {
-        "id": "wf3-2-booking-result",
-        "name": "Set — Booking Result",
-        "type": "n8n-nodes-base.code",
-        "position": [
-          900,
-          0
-        ],
-        "parameters": {
-          "mode": "runOnceForAllItems",
-          "jsCode": "const raw = $input.first().json || {};\nconst input = (raw.message && typeof raw.message === 'object') ? raw.message : raw;\nconst success = input.success === true;\n\nreturn [{\n  json: {\n    success,\n    action: 'BOOK_APPOINTMENT',\n    status: success ? 'BOOKED' : 'FAILED',\n    appointment_id: input.appointment_id || null,\n    service: input.service || '',\n    scheduled_time: input.scheduled_time || null,\n    tenant_id: input.tenant_id || null,\n    message: (typeof input.message === 'string' ? input.message : null) || (\n      success ? 'Appointment booked successfully.' : 'Appointment booking failed.'\n    )\n  }\n}];"
-        },
-        "typeVersion": 2
-      }
-    ],
-    "active": true,
-    "settings": {},
-    "versionId": "63ace1c4-ab0e-4e18-bdcf-e64321502b57",
-    "staticData": null,
-    "connections": {
-      "Execute Workflow Trigger": {
-        "main": [
-          [
-            {
-              "node": "Set — Normalize Booking Input",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Set — Normalize Booking Input": {
-        "main": [
-          [
-            {
-              "node": "HTTP Request — Create Appointment",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "HTTP Request — Create Appointment": {
-        "main": [
-          [
-            {
-              "node": "Set — Booking Result",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      }
-    }
-  },
-  {
-    "id": "heshly-ai-action-update-crm-v1",
-    "name": "WF3/3 — AI Action — Update Lead / Customer",
-    "nodes": [
-      {
-        "id": "execute-wf3-3-trigger",
-        "name": "Execute Workflow Trigger — WF3/3",
-        "type": "n8n-nodes-base.executeWorkflowTrigger",
-        "position": [
-          -608,
-          304
-        ],
-        "parameters": {
-          "workflowInputs": {
-            "values": [
-              {
-                "name": "data",
-                "type": "object"
-              }
-            ]
-          }
-        },
-        "typeVersion": 1.1
-      },
-      {
-        "id": "normalize-wf3-3-input",
-        "name": "Set — Normalize CRM Update Input",
-        "type": "n8n-nodes-base.code",
-        "position": [
-          -384,
-          304
-        ],
-        "parameters": {
-          "jsCode": "const envelope = $input.first().json || {};\nconst input = envelope.data || envelope;\nconst body = input.body && typeof input.body === \"object\" ? input.body : input;\nconst business = body.business || body.Business || {};\nconst customer = body.customer || body.Customer || {};\nconst lead = body.lead || body.Lead || {};\nconst entities = body.entities || body.Entities || {};\n\nreturn [{ json: {\n  Business: business,\n  Customer: customer,\n  Lead: lead,\n  Conversation: body.conversation || body.Conversation || {},\n  Message: body.message || body.Message || {},\n  Entities: entities,\n  tenant_id: business.id || business.tenant_id || body.tenant_id || \"\",\n  lead_id: entities.lead_id || lead.id || lead.lead_id || lead.heshly_lead_id || customer.lead_id || customer.id || \"\",\n  full_name: entities.name || entities.full_name || customer.name || lead.name || lead.full_name || customer.phone || \"Customer\",\n  phone: entities.phone || customer.phone || lead.phone || lead.mobile_no || \"\",\n  email: entities.email || customer.email || lead.email || lead.email_id || null\n} }];"
-        },
-        "typeVersion": 2
-      },
-      {
-        "id": "update-wf3-3-lead",
-        "name": "HTTP Request — Update Lead / Customer",
+        "id": "66c2f72c-4bd0-49bd-9d2f-c58a60af2a1b",
+        "name": "HTTP Request — Process Follow-ups",
         "type": "n8n-nodes-base.httpRequest",
         "position": [
-          -160,
-          304
+          656,
+          0
         ],
         "parameters": {
-          "url": "https://erp.heshly.com/api/method/heshly_core.api.customers.update_lead",
-          "body": "={{ JSON.stringify({lead_id:$json.lead_id,full_name:$json.full_name,phone:$json.phone||null,email:$json.email||null,tenant_id:$json.tenant_id}) }}",
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.followups.process_pending",
           "method": "POST",
-          "options": {
-            "response": {
-              "response": {
-                "neverError": true,
-                "responseFormat": "json"
-              }
-            },
-            "alwaysOutputData": true
-          },
-          "sendBody": true,
-          "contentType": "raw",
-          "sendHeaders": true,
-          "rawContentType": "application/json",
-          "headerParameters": {
-            "parameters": [
-              {
-                "name": "Content-Type",
-                "value": "application/json"
-              }
-            ]
-          }
-        },
-        "typeVersion": 4.2
-      },
-      {
-        "id": "crm-update-result-wf3-3",
-        "name": "Set — CRM Update Result",
-        "type": "n8n-nodes-base.code",
-        "position": [
-          64,
-          304
-        ],
-        "parameters": {
-          "jsCode": "const raw = $input.first().json || {};\nconst input = (raw.message && typeof raw.message === 'object') ? raw.message : raw;\nconst success = input.success === true;\nreturn [{ json: {\n  success,\n  action: 'UPDATE_LEAD_CUSTOMER',\n  status: success ? 'UPDATED' : 'FAILED',\n  lead: input.lead || null,\n  customer: input.customer || null,\n  message: (typeof input.message === 'string' ? input.message : null) || (success ? 'Lead/customer updated successfully.' : 'Lead/customer update failed.')\n} }];"
-        },
-        "typeVersion": 2
-      }
-    ],
-    "active": true,
-    "settings": {
-      "binaryMode": "separate",
-      "executionOrder": "v1"
-    },
-    "versionId": "f4b1e77c-cd70-4c24-afc9-a3c3d8a058ac",
-    "staticData": null,
-    "connections": {
-      "Execute Workflow Trigger — WF3/3": {
-        "main": [
-          [
-            {
-              "node": "Set — Normalize CRM Update Input",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Set — Normalize CRM Update Input": {
-        "main": [
-          [
-            {
-              "node": "HTTP Request — Update Lead / Customer",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "HTTP Request — Update Lead / Customer": {
-        "main": [
-          [
-            {
-              "node": "Set — CRM Update Result",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      }
-    }
-  },
-  {
-    "id": "heshly-ai-action-other-v1",
-    "name": "WF3/4 — AI Action — Other / Fallback",
-    "nodes": [
-      {
-        "id": "wf34-trigger",
-        "name": "Execute Workflow Trigger — WF3/4",
-        "type": "n8n-nodes-base.executeWorkflowTrigger",
-        "position": [
-          304,
-          304
-        ],
-        "parameters": {
-          "inputSource": "passthrough"
-        },
-        "typeVersion": 1.1
-      },
-      {
-        "id": "wf34-normalize",
-        "name": "Set — Normalize Fallback Input",
-        "type": "n8n-nodes-base.code",
-        "position": [
-          528,
-          304
-        ],
-        "parameters": {
-          "jsCode": "const envelope = $input.first().json || {};\nconst input = envelope.data || envelope;\nconst body = input.body && typeof input.body === 'object' ? input.body : input;\nconst business = body.business || body.Business || {};\n\nreturn [{\n  json: {\n    next_action: body.next_action || body['Next Action'] || 'OTHER',\n    business,\n    customer: body.customer || body.Customer || {},\n    lead: body.lead || body.Lead || {},\n    conversation: body.conversation || body.Conversation || {},\n    message: body.message || body.Message || {},\n    tenant_id: body.tenant_id || business.id || business.tenant_id || ''\n  }\n}];"
-        },
-        "typeVersion": 2
-      },
-      {
-        "id": "wf34-result",
-        "name": "Set — Fallback Result",
-        "type": "n8n-nodes-base.code",
-        "position": [
-          752,
-          304
-        ],
-        "parameters": {
-          "jsCode": "const input = $input.first().json || {};\n\nreturn [{\n  json: {\n    success: true,\n    action: 'OTHER',\n    status: 'FALLBACK',\n    next_action: 'OTHER',\n    message: 'Action received but no specific workflow is configured.',\n    business: input.business || {},\n    customer: input.customer || {},\n    lead: input.lead || {},\n    tenant_id: input.tenant_id || ''\n  }\n}];"
-        },
-        "typeVersion": 2
-      }
-    ],
-    "active": true,
-    "settings": {
-      "binaryMode": "separate",
-      "executionOrder": "v1"
-    },
-    "versionId": "63508df2-2729-46e3-b4e9-eb25ebcbd9df",
-    "staticData": null,
-    "connections": {
-      "Set — Normalize Fallback Input": {
-        "main": [
-          [
-            {
-              "node": "Set — Fallback Result",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Execute Workflow Trigger — WF3/4": {
-        "main": [
-          [
-            {
-              "node": "Set — Normalize Fallback Input",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      }
-    }
-  },
-  {
-    "id": "heshly-ai-receptionist-v3",
-    "name": "Workflow 2 — AI Receptionist",
-    "nodes": [
-      {
-        "id": "ai-receptionist-incoming-webhook",
-        "name": "Execute Workflow Trigger",
-        "type": "n8n-nodes-base.executeWorkflowTrigger",
-        "position": [
-          304,
-          0
-        ],
-        "parameters": {
-          "workflowInputs": {
-            "values": [
-              {
-                "name": "business",
-                "type": "object"
-              },
-              {
-                "name": "customer",
-                "type": "object"
-              },
-              {
-                "name": "lead",
-                "type": "object"
-              },
-              {
-                "name": "conversation",
-                "type": "object"
-              },
-              {
-                "name": "message",
-                "type": "object"
-              },
-              {
-                "name": "business_knowledge",
-                "type": "object"
-              },
-              {
-                "name": "tenant_id"
-              },
-              {
-                "name": "business_id"
-              },
-              {
-                "name": "phone_number"
-              },
-              {
-                "name": "phone_number_id"
-              },
-              {
-                "name": "conversation_history",
-                "type": "object"
-              }
-            ]
-          }
-        },
-        "typeVersion": 1.1
-      },
-      {
-        "id": "normalize-ai-input",
-        "name": "Set — Normalize AI Input",
-        "type": "n8n-nodes-base.set",
-        "position": [
-          528,
-          0
-        ],
-        "parameters": {
           "options": {},
-          "assignments": {
-            "assignments": [
-              {
-                "id": "business",
-                "name": "business",
-                "type": "object",
-                "value": "={{ $json.data?.business || $json.body?.business || $json.business || {} }}"
-              },
-              {
-                "id": "customer",
-                "name": "customer",
-                "type": "object",
-                "value": "={{ $json.data?.customer || $json.body?.customer || $json.customer || {} }}"
-              },
-              {
-                "id": "lead",
-                "name": "lead",
-                "type": "object",
-                "value": "={{ $json.data?.lead || $json.body?.lead || $json.lead || {} }}"
-              },
-              {
-                "id": "conversation",
-                "name": "conversation",
-                "type": "object",
-                "value": "={{ $json.data?.conversation || $json.body?.conversation || $json.conversation || {} }}"
-              },
-              {
-                "id": "message",
-                "name": "message",
-                "type": "object",
-                "value": "={{ $json.data?.message || $json.body?.message || $json.message || {} }}"
-              },
-              {
-                "id": "business_knowledge",
-                "name": "business_knowledge",
-                "type": "object",
-                "value": "={{ $json.data?.business_knowledge || $json.body?.business_knowledge || $json.business_knowledge || {} }}"
-              }
-            ]
-          }
+          "jsonBody": "={}",
+          "sendBody": true,
+          "specifyBody": "json"
         },
-        "typeVersion": 3.4
+        "typeVersion": 4.2
       },
       {
-        "id": "ai-receptionist-agent",
-        "name": "AI Agent — AI Receptionist",
-        "type": "@n8n/n8n-nodes-langchain.agent",
+        "id": "211ad8f7-ba7b-4162-94e4-9f8b55bc78a1",
+        "name": "HTTP Request — Get Stale Conversations",
+        "type": "n8n-nodes-base.httpRequest",
         "position": [
-          752,
+          880,
           0
         ],
         "parameters": {
-          "text": "={{ JSON.stringify({ business: $json.business, customer: $json.customer, lead: $json.lead, conversation: $json.conversation, conversation_history: $json.conversation_history, message: $json.message, business_knowledge: $json.business_knowledge }) }}",
-          "options": {
-            "systemMessage": "You are the AI Receptionist. Classify the latest customer message and return only structured output. next_action MUST be exactly one of CHECK_AVAILABILITY, BOOK_APPOINTMENT, UPDATE_LEAD_CUSTOMER, or OTHER. Never return REPLY. Use CHECK_AVAILABILITY for questions about whether a service or requested time is available. Use BOOK_APPOINTMENT only when the customer asks to make or confirm a booking. Use UPDATE_LEAD_CUSTOMER only for explicit profile changes. Use OTHER for greetings, general questions, or clarification. Do not ask for a clinic or business name when the supplied business context is sufficient."
-          },
-          "promptType": "define",
-          "hasOutputParser": true
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.conversations.get_stale",
+          "options": {}
         },
-        "typeVersion": 3.1
+        "typeVersion": 4.2
       },
       {
-        "id": "openrouter-chat-model",
-        "name": "OpenRouter Chat Model",
-        "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
-        "position": [
-          768,
-          224
-        ],
-        "parameters": {
-          "options": {
-            "maxTokens": 2000
-          },
-          "credentials": {
-            "openRouterApi": {
-              "id": "GcGJq1Iw5o5FTjEN",
-              "name": "OpenRouter account"
-            }
-          }
-        },
-        "typeVersion": 1
-      },
-      {
-        "id": "ai-structured-output-parser",
-        "name": "Structured Output Parser",
-        "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
-        "position": [
-          896,
-          224
-        ],
-        "parameters": {
-          "schemaType": "manual",
-          "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"intent\": {\n      \"type\": \"string\"\n    },\n    \"entities\": {\n      \"type\": \"object\"\n    },\n    \"next_action\": {\n      \"type\": \"string\"\n    },\n    \"response\": {\n      \"type\": \"string\"\n    },\n    \"confidence\": {\n      \"type\": \"number\",\n      \"minimum\": 0,\n      \"maximum\": 1\n    }\n  },\n  \"required\": [\n    \"intent\",\n    \"entities\",\n    \"next_action\",\n    \"response\",\n    \"confidence\"\n  ]\n}"
-        },
-        "typeVersion": 1.3
-      },
-      {
-        "id": "normalize-ai-output",
-        "name": "Code — Normalize AI Output",
-        "type": "n8n-nodes-base.code",
+        "id": "609d03c4-aa2f-4045-9ab2-5004c966a22e",
+        "name": "HTTP Request — Handle Stale Conversations",
+        "type": "n8n-nodes-base.httpRequest",
         "position": [
           1104,
           0
         ],
         "parameters": {
-          "jsCode": "\nconst input = $json;\n\nlet ai = input.output ?? input;\n\nif (typeof ai === \"string\") {\n  try {\n    ai = JSON.parse(ai);\n  } catch {\n    ai = {};\n  }\n}\n\nif (ai.output && typeof ai.output === \"object\") {\n  ai = ai.output;\n}\n\nconst intent =\n  typeof ai.intent === \"string\"\n    ? ai.intent.trim()\n    : \"OTHER\";\n\nconst entities =\n  ai.entities && typeof ai.entities === \"object\"\n    ? ai.entities\n    : {};\n\nconst allowed = new Set([\n  \"CHECK_AVAILABILITY\",\n  \"BOOK_APPOINTMENT\",\n  \"UPDATE_LEAD_CUSTOMER\",\n  \"OTHER\"\n]);\n\nconst candidate =\n  typeof ai.next_action === \"string\"\n    ? ai.next_action.trim().toUpperCase()\n    : \"OTHER\";\n\nconst next_action = allowed.has(candidate)\n  ? candidate\n  : \"OTHER\";\n\nconst response =\n  typeof ai.response === \"string\"\n    ? ai.response.trim()\n    : \"I can help with that.\";\n\nconst confidence = Math.max(\n  0,\n  Math.min(\n    1,\n    Number.isFinite(Number(ai.confidence))\n      ? Number(ai.confidence)\n      : 0\n  )\n);\n\nconst original = $(\"Set — Normalize AI Input\").item.json;\n\nreturn [{\n  json: {\n    business: original.business || {},\n    customer: original.customer || {},\n    lead: original.lead || {},\n    conversation: original.conversation || {},\n    message: original.message || {},\n    business_knowledge: original.business_knowledge || {},\n\n    phone_number:\n      original.phone_number ||\n      original.message?.phone_number ||\n      original.message?.from ||\n      \"\",\n\n    phone_number_id:\n      original.phone_number_id ||\n      original.message?.phone_number_id ||\n      \"\",\n\n    intent,\n    entities,\n    next_action,\n    response,\n    confidence\n  }\n}];\n"
-        },
-        "typeVersion": 2
-      },
-      {
-        "id": "wf2-exec-wf3-parent",
-        "name": "Execute Workflow — WF3 Parent",
-        "type": "n8n-nodes-base.executeWorkflow",
-        "position": [
-          1328,
-          0
-        ],
-        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.conversations.handle_stale",
+          "method": "POST",
           "options": {},
-          "workflowId": {
-            "__rl": true,
-            "mode": "list",
-            "value": "heshly-ai-action-booking-v1",
-            "cachedResultUrl": "/workflow/heshly-ai-action-booking-v1",
-            "cachedResultName": "Workflow 3 — AI Action / Booking"
-          },
-          "workflowInputs": {
-            "value": {
-              "data": "={{ $json }}"
-            },
-            "schema": [
-              {
-                "id": "data",
-                "type": "object",
-                "display": true,
-                "removed": false,
-                "required": false,
-                "displayName": "data",
-                "defaultMatch": false,
-                "canBeUsedToMatch": true
-              }
-            ],
-            "mappingMode": "defineBelow",
-            "matchingColumns": [
-              "data"
-            ],
-            "attemptToConvertTypes": false,
-            "convertFieldsToString": false
-          }
+          "jsonBody": "={}",
+          "sendBody": true,
+          "specifyBody": "json"
         },
-        "typeVersion": 1.2
+        "typeVersion": 4.2
       }
     ],
     "active": true,
@@ -1246,618 +1453,56 @@
       "binaryMode": "separate",
       "executionOrder": "v1"
     },
-    "versionId": "74e679e3-faa2-4af2-b245-bedc9eec0c80",
+    "versionId": "e35a0a7e-952e-4fe8-8e13-3bff69c1ec9d",
     "staticData": null,
     "connections": {
-      "OpenRouter Chat Model": {
-        "ai_languageModel": [
-          [
-            {
-              "node": "AI Agent — AI Receptionist",
-              "type": "ai_languageModel",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Execute Workflow Trigger": {
+      "Schedule Trigger": {
         "main": [
           [
             {
-              "node": "Set — Normalize AI Input",
+              "node": "HTTP Request — Get Pending Follow-ups",
               "type": "main",
               "index": 0
             }
           ]
         ]
       },
-      "Structured Output Parser": {
-        "ai_outputParser": [
-          [
-            {
-              "node": "AI Agent — AI Receptionist",
-              "type": "ai_outputParser",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Set — Normalize AI Input": {
+      "HTTP Request — Process Follow-ups": {
         "main": [
           [
             {
-              "node": "AI Agent — AI Receptionist",
+              "node": "HTTP Request — Get Stale Conversations",
               "type": "main",
               "index": 0
             }
           ]
         ]
       },
-      "AI Agent — AI Receptionist": {
+      "HTTP Request — Get Pending Follow-ups": {
         "main": [
           [
             {
-              "node": "Code — Normalize AI Output",
+              "node": "HTTP Request — Process Follow-ups",
               "type": "main",
               "index": 0
             }
           ]
         ]
       },
-      "Code — Normalize AI Output": {
+      "HTTP Request — Get Stale Conversations": {
         "main": [
           [
             {
-              "node": "Execute Workflow — WF3 Parent",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      }
-    }
-  },
-  {
-    "id": "heshly-ai-action-booking-v1",
-    "name": "Workflow 3 — AI Action / Booking",
-    "nodes": [
-      {
-        "id": "4b13dd31-9d8b-462f-8141-f9e21324a208",
-        "name": "Set — Normalize Action Input",
-        "type": "n8n-nodes-base.set",
-        "position": [
-          224,
-          288
-        ],
-        "parameters": {
-          "options": {},
-          "assignments": {
-            "assignments": [
-              {
-                "id": "next_action",
-                "name": "next_action",
-                "type": "string",
-                "value": "={{ (($json.data?.action || $json.body?.data?.action || $json.body?.action || $json.action || $json.data?.next_action || $json.next_action || \"\") + \"\").toUpperCase() }}"
-              },
-              {
-                "id": "action",
-                "name": "action",
-                "type": "string",
-                "value": "={{ $json.data?.action || $json.body?.data?.action || $json.body?.action || $json.action || $json.data?.next_action || $json.next_action || \"\" }}"
-              },
-              {
-                "id": "service",
-                "name": "service",
-                "type": "string",
-                "value": "={{ $json.data?.entities?.service || $json.body?.data?.entities?.service || $json.entities?.service || $json.data?.service || $json.body?.data?.service || $json.body?.service || $json.service || \"\" }}"
-              },
-              {
-                "id": "date",
-                "name": "date",
-                "type": "string",
-                "value": "={{ $json.data?.entities?.date || $json.body?.data?.entities?.date || $json.entities?.date || $json.data?.date || $json.body?.data?.date || $json.body?.date || $json.date || \"\" }}"
-              },
-              {
-                "id": "tenant_id",
-                "name": "tenant_id",
-                "type": "string",
-                "value": "={{ $json.data?.tenant_id || $json.body?.data?.tenant_id || $json.tenant_id || $json.data?.business?.tenant_id || $json.data?.business?.id || $json.business?.tenant_id || $json.business?.id || $json.body?.data?.business?.tenant_id || $json.body?.data?.business?.id || $json.body?.business?.tenant_id || $json.body?.business?.id || \"\" }}"
-              },
-              {
-                "id": "entities",
-                "name": "entities",
-                "type": "object",
-                "value": "={{ $json.data?.entities || $json.body?.data?.entities || $json.entities || { service: ($json.data?.service || $json.service || \"\"), date: ($json.data?.date || $json.date || \"\") } }}"
-              },
-              {
-                "id": "business",
-                "name": "business",
-                "type": "object",
-                "value": "={{ $json.data?.business || $json.body?.data?.business || $json.body?.business || $json.business || {} }}"
-              },
-              {
-                "id": "customer",
-                "name": "customer",
-                "type": "object",
-                "value": "={{ $json.data?.customer || $json.body?.data?.customer || $json.body?.customer || $json.customer || {} }}"
-              },
-              {
-                "id": "lead",
-                "name": "lead",
-                "type": "object",
-                "value": "={{ $json.data?.lead || $json.body?.data?.lead || $json.body?.lead || $json.lead || {} }}"
-              },
-              {
-                "id": "wf3-response",
-                "name": "response",
-                "type": "string",
-                "value": "={{ $json.data?.response || $json.body?.response || $json.response || \"\" }}"
-              },
-              {
-                "id": "wf3-intent",
-                "name": "intent",
-                "type": "string",
-                "value": "={{ $json.data?.intent || $json.body?.intent || $json.intent || \"\" }}"
-              },
-              {
-                "id": "wf3-confidence",
-                "name": "confidence",
-                "type": "number",
-                "value": "={{ $json.data?.confidence || $json.body?.confidence || $json.confidence || 0 }}"
-              },
-              {
-                "id": "wf3-conversation",
-                "name": "conversation",
-                "type": "object",
-                "value": "={{ $json.data?.conversation || $json.body?.conversation || $json.conversation || {} }}"
-              },
-              {
-                "id": "wf3-phone",
-                "name": "phone_number",
-                "type": "string",
-                "value": "={{ $json.data?.phone_number || $json.body?.phone_number || $json.phone_number || \"\" }}"
-              },
-              {
-                "id": "wf3-phone-id",
-                "name": "phone_number_id",
-                "type": "string",
-                "value": "={{ $json.data?.phone_number_id || $json.body?.phone_number_id || $json.phone_number_id || \"\" }}"
-              }
-            ]
-          }
-        },
-        "typeVersion": 3.4
-      },
-      {
-        "id": "dbdee639-9391-4f0b-836e-593231bf3358",
-        "name": "Switch — Next Action",
-        "type": "n8n-nodes-base.switch",
-        "position": [
-          448,
-          256
-        ],
-        "parameters": {
-          "rules": {
-            "values": [
-              {
-                "outputKey": "check_availability",
-                "conditions": {
-                  "options": {
-                    "version": 2,
-                    "leftValue": "",
-                    "caseSensitive": true,
-                    "typeValidation": "strict"
-                  },
-                  "combinator": "and",
-                  "conditions": [
-                    {
-                      "id": "switch-check-availability",
-                      "operator": {
-                        "type": "string",
-                        "operation": "equals"
-                      },
-                      "leftValue": "={{ $json.next_action }}",
-                      "rightValue": "CHECK_AVAILABILITY"
-                    }
-                  ]
-                },
-                "renameOutput": true
-              },
-              {
-                "outputKey": "book_appointment",
-                "conditions": {
-                  "options": {
-                    "version": 2,
-                    "leftValue": "",
-                    "caseSensitive": true,
-                    "typeValidation": "strict"
-                  },
-                  "combinator": "and",
-                  "conditions": [
-                    {
-                      "id": "switch-book-appointment",
-                      "operator": {
-                        "type": "string",
-                        "operation": "equals"
-                      },
-                      "leftValue": "={{ $json.next_action }}",
-                      "rightValue": "BOOK_APPOINTMENT"
-                    }
-                  ]
-                },
-                "renameOutput": true
-              },
-              {
-                "outputKey": "update_lead_customer",
-                "conditions": {
-                  "options": {
-                    "version": 2,
-                    "leftValue": "",
-                    "caseSensitive": true,
-                    "typeValidation": "strict"
-                  },
-                  "combinator": "and",
-                  "conditions": [
-                    {
-                      "id": "switch-update-lead-customer",
-                      "operator": {
-                        "type": "string",
-                        "operation": "equals"
-                      },
-                      "leftValue": "={{ $json.next_action }}",
-                      "rightValue": "UPDATE_LEAD_CUSTOMER"
-                    }
-                  ]
-                },
-                "renameOutput": true
-              },
-              {
-                "outputKey": "other",
-                "conditions": {
-                  "options": {
-                    "version": 2,
-                    "leftValue": "",
-                    "caseSensitive": true,
-                    "typeValidation": "strict"
-                  },
-                  "combinator": "and",
-                  "conditions": [
-                    {
-                      "id": "switch-other",
-                      "operator": {
-                        "type": "string",
-                        "operation": "equals"
-                      },
-                      "leftValue": "={{ $json.next_action }}",
-                      "rightValue": "OTHER"
-                    }
-                  ]
-                },
-                "renameOutput": true
-              }
-            ]
-          },
-          "options": {
-            "fallbackOutput": "none"
-          }
-        },
-        "typeVersion": 3.2
-      },
-      {
-        "id": "wf3-exec-wf31",
-        "name": "Execute Workflow — WF3/1",
-        "type": "n8n-nodes-base.executeWorkflow",
-        "position": [
-          672,
-          0
-        ],
-        "parameters": {
-          "options": {},
-          "workflowId": {
-            "__rl": true,
-            "mode": "list",
-            "value": "8f3c2a91-7d64-4e52-b8a1-91c7f4e62d30",
-            "cachedResultUrl": "/workflow/8f3c2a91-7d64-4e52-b8a1-91c7f4e62d30",
-            "cachedResultName": "WF3/1 — AI Action — Check Availability"
-          },
-          "workflowInputs": {
-            "value": {
-              "data": "={{ {\n  Business: $json.business,\n  Customer: $json.customer,\n  Entities: $json.entities || {\n    service: $json.service,\n    date: $json.date\n  },\n  next_action: $json.next_action\n} }}"
-            },
-            "schema": [
-              {
-                "id": "data",
-                "type": "object",
-                "display": true,
-                "removed": false,
-                "required": false,
-                "displayName": "data",
-                "defaultMatch": false,
-                "canBeUsedToMatch": true
-              }
-            ],
-            "mappingMode": "defineBelow",
-            "matchingColumns": [
-              "data"
-            ],
-            "attemptToConvertTypes": false,
-            "convertFieldsToString": false
-          }
-        },
-        "typeVersion": 1.2
-      },
-      {
-        "id": "execute-wf3-2-book",
-        "name": "Execute Workflow — WF3/2",
-        "type": "n8n-nodes-base.executeWorkflow",
-        "position": [
-          672,
-          192
-        ],
-        "parameters": {
-          "options": {},
-          "workflowId": {
-            "__rl": true,
-            "mode": "list",
-            "value": "heshly-ai-action-book-v2",
-            "cachedResultUrl": "/workflow/heshly-ai-action-book-v2",
-            "cachedResultName": "WF3/2 — AI Action — Book Appointment"
-          },
-          "workflowInputs": {
-            "value": {
-              "data": "={{ $json }}"
-            },
-            "schema": [
-              {
-                "id": "data",
-                "type": "object",
-                "display": true,
-                "removed": false,
-                "required": false,
-                "displayName": "data",
-                "defaultMatch": false,
-                "canBeUsedToMatch": true
-              }
-            ],
-            "mappingMode": "defineBelow",
-            "matchingColumns": [
-              "data"
-            ],
-            "attemptToConvertTypes": false,
-            "convertFieldsToString": true
-          }
-        },
-        "typeVersion": 1.2
-      },
-      {
-        "id": "execute-wf3-3-update-crm",
-        "name": "Execute Workflow — WF3/3",
-        "type": "n8n-nodes-base.executeWorkflow",
-        "position": [
-          672,
-          384
-        ],
-        "parameters": {
-          "options": {},
-          "workflowId": {
-            "__rl": true,
-            "mode": "list",
-            "value": "heshly-ai-action-update-crm-v1",
-            "cachedResultUrl": "/workflow/heshly-ai-action-update-crm-v1",
-            "cachedResultName": "WF3/3 — AI Action — Update Lead / Customer"
-          },
-          "workflowInputs": {
-            "value": {
-              "data": "={{ $json }}"
-            },
-            "schema": [
-              {
-                "id": "data",
-                "type": "object",
-                "display": true,
-                "removed": false,
-                "required": false,
-                "displayName": "data",
-                "defaultMatch": false,
-                "canBeUsedToMatch": true
-              }
-            ],
-            "mappingMode": "defineBelow",
-            "matchingColumns": [
-              "data"
-            ],
-            "attemptToConvertTypes": false,
-            "convertFieldsToString": true
-          }
-        },
-        "typeVersion": 1.2
-      },
-      {
-        "id": "wf3-exec-wf34",
-        "name": "Execute Workflow — WF3/4",
-        "type": "n8n-nodes-base.executeWorkflow",
-        "position": [
-          672,
-          576
-        ],
-        "parameters": {
-          "options": {},
-          "workflowId": {
-            "__rl": true,
-            "mode": "list",
-            "value": "heshly-ai-action-other-v1",
-            "cachedResultUrl": "/workflow/heshly-ai-action-other-v1",
-            "cachedResultName": "WF3/4 — AI Action — Other / Fallback"
-          },
-          "workflowInputs": {
-            "value": {},
-            "schema": [],
-            "mappingMode": "defineBelow",
-            "matchingColumns": [],
-            "attemptToConvertTypes": false,
-            "convertFieldsToString": true
-          }
-        },
-        "typeVersion": 1.2
-      },
-      {
-        "id": "d74550f7-4423-4937-8cde-862a0a8238c6",
-        "name": "Execute Workflow Trigger",
-        "type": "n8n-nodes-base.executeWorkflowTrigger",
-        "position": [
-          0,
-          288
-        ],
-        "parameters": {},
-        "typeVersion": 1
-      },
-      {
-        "id": "wf3-prepare-whatsapp-response",
-        "name": "Prepare WhatsApp Response",
-        "type": "n8n-nodes-base.code",
-        "position": [
-          896,
-          288
-        ],
-        "parameters": {
-          "jsCode": "const action = $input.first().json || {};\nconst original = $(\"Set — Normalize Action Input\").item.json || {};\n\nlet response = action.message || action.response || original.response || \"\";\n\nconst actionName = String(\n  action.action || action.next_action || original.next_action || \"\"\n).toUpperCase();\n\nconst available =\n  action.available === true ||\n  String(action.available).toLowerCase() === \"true\";\n\nconst unavailable =\n  action.available === false ||\n  String(action.available).toLowerCase() === \"false\";\n\nif (!response && actionName === \"CHECK_AVAILABILITY\") {\n  if (available && Array.isArray(action.slots) && action.slots.length) {\n    response = `The requested service is available. Available times: ${action.slots.join(\", \")}`;\n  } else if (unavailable) {\n    response = \"Unfortunately, that time is not available.\";\n  }\n}\n\nreturn [{\n  json: {\n    business: original.business || {},\n    customer: original.customer || {},\n    lead: original.lead || {},\n    conversation: original.conversation || {},\n    response,\n    intent: original.intent || \"\",\n    next_action: original.next_action || action.next_action || action.action || \"OTHER\",\n    phone_number: original.phone_number || \"\",\n    phone_number_id: original.phone_number_id || \"\",\n    action_result: action\n  }\n}];"
-        },
-        "typeVersion": 2
-      },
-      {
-        "id": "wf3-execute-wf4",
-        "name": "Execute Workflow — WF4 WhatsApp Response",
-        "type": "n8n-nodes-base.executeWorkflow",
-        "position": [
-          1120,
-          288
-        ],
-        "parameters": {
-          "options": {},
-          "workflowId": {
-            "__rl": true,
-            "mode": "id",
-            "value": "37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd"
-          }
-        },
-        "typeVersion": 1
-      }
-    ],
-    "active": true,
-    "settings": {
-      "binaryMode": "separate",
-      "executionOrder": "v1"
-    },
-    "versionId": "12506b6b-d40b-4d73-b1ae-02ee676192e6",
-    "staticData": null,
-    "connections": {
-      "Switch — Next Action": {
-        "main": [
-          [
-            {
-              "node": "Execute Workflow — WF3/1",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Execute Workflow — WF3/2",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Execute Workflow — WF3/3",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Execute Workflow — WF3/4",
+              "node": "HTTP Request — Handle Stale Conversations",
               "type": "main",
               "index": 0
             }
           ]
         ]
       },
-      "Execute Workflow Trigger": {
+      "HTTP Request — Handle Stale Conversations": {
         "main": [
-          [
-            {
-              "node": "Set — Normalize Action Input",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Prepare WhatsApp Response": {
-        "main": [
-          [
-            {
-              "node": "Execute Workflow — WF4 WhatsApp Response",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Execute Workflow — WF3/1": {
-        "main": [
-          [
-            {
-              "node": "Prepare WhatsApp Response",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Execute Workflow — WF3/2": {
-        "main": [
-          [
-            {
-              "node": "Prepare WhatsApp Response",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Execute Workflow — WF3/3": {
-        "main": [
-          [
-            {
-              "node": "Prepare WhatsApp Response",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Execute Workflow — WF3/4": {
-        "main": [
-          [
-            {
-              "node": "Prepare WhatsApp Response",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Set — Normalize Action Input": {
-        "main": [
-          [
-            {
-              "node": "Switch — Next Action",
-              "type": "main",
-              "index": 0
-            }
-          ]
+          []
         ]
       }
     }
@@ -2193,8 +1838,7 @@
           0,
           -64
         ],
-        "parameters": {},
-        "typeVersion": 1
+        "parameters": {}
       },
       {
         "id": "18a0b281-3844-480c-bd3e-bfa7d1ac72e8",
@@ -2504,92 +2148,218 @@
     }
   },
   {
-    "id": "61d65266-2c38-4e41-8b85-b311df0f31ec",
-    "name": "Workflow 6 — Scheduled / Background Processing",
+    "id": "heshly-ai-action-book-v2",
+    "name": "WF3/2 — AI Action — Book Appointment",
     "nodes": [
       {
-        "id": "schedule-trigger-wf6",
-        "name": "Schedule Trigger",
-        "type": "n8n-nodes-base.scheduleTrigger",
+        "id": "wf3-2-trigger",
+        "name": "Execute Workflow Trigger",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
         "position": [
-          208,
+          0,
           0
         ],
         "parameters": {
-          "rule": {
-            "interval": [
+          "workflowInputs": {
+            "values": [
               {
-                "field": "minutes",
-                "minutesInterval": 15
+                "name": "data",
+                "type": "object"
               }
             ]
           }
         },
-        "typeVersion": 1.2
+        "typeVersion": 1.1
       },
       {
-        "id": "cad99315-14fe-446f-a84b-ef40d37de1fd",
-        "name": "HTTP Request — Get Pending Follow-ups",
-        "type": "n8n-nodes-base.httpRequest",
+        "id": "wf3-2-normalize",
+        "name": "Set — Normalize Booking Input",
+        "type": "n8n-nodes-base.code",
         "position": [
-          432,
+          300,
           0
         ],
         "parameters": {
-          "url": "https://erp.heshly.com/api/method/heshly_core.api.followups.get_pending",
-          "options": {}
+          "mode": "runOnceForAllItems",
+          "jsCode": "const envelope = $input.first().json || {};\nconst input = envelope.data || envelope;\nconst body = input.body && typeof input.body === 'object' ? input.body : input;\n\nconst entities = body.Entities || body.entities || {};\nconst customer = body.Customer || body.customer || {};\nconst business = body.Business || body.business || {};\nconst scheduled = String(entities.scheduled_time || body.scheduled_time || '');\nconst preferred_date = entities.preferred_date || body.preferred_date || (scheduled ? scheduled.substring(0, 10) : '');\nconst preferred_time = entities.preferred_time || body.preferred_time || (scheduled.includes('T') ? scheduled.split('T')[1].substring(0, 8) : '');\n\nreturn [{\n  json: {\n    business,\n    customer,\n    lead: body.Lead || body.lead || {},\n    service: entities.service || body.service || '',\n    preferred_date,\n    preferred_time,\n    duration_minutes: entities.duration_minutes || body.duration_minutes || 30,\n    tenant_id: body.tenant_id || business.id || business.tenant_id || '',\n    customer_name: customer.name || body.customer_name || '',\n    customer_phone: customer.phone || body.customer_phone || '',\n    notes: entities.notes || body.notes || ''\n  }\n}];"
         },
-        "typeVersion": 4.2
+        "typeVersion": 2
       },
       {
-        "id": "66c2f72c-4bd0-49bd-9d2f-c58a60af2a1b",
-        "name": "HTTP Request — Process Follow-ups",
+        "id": "wf3-2-create-appointment",
+        "name": "HTTP Request — Create Appointment",
         "type": "n8n-nodes-base.httpRequest",
         "position": [
-          656,
+          600,
           0
         ],
         "parameters": {
-          "url": "https://erp.heshly.com/api/method/heshly_core.api.followups.process_pending",
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.booking.book_appointment",
           "method": "POST",
-          "options": {},
-          "jsonBody": "={}",
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true,
+                "responseFormat": "json"
+              }
+            },
+            "alwaysOutputData": true
+          },
+          "jsonBody": "={{ JSON.stringify({ customer_name: $json.customer?.name || $json.customer_name || \"Customer\", customer_phone: $json.customer?.phone || $json.customer_phone || \"\", service: $json.service || \"\", scheduled_time: $json.scheduled_time || $json.appointment_date || $json.date || (($json.preferred_date || \"\") + \"T\" + ($json.preferred_time || \"00:00:00\")) , duration_minutes: $json.duration_minutes || 30, notes: $json.notes || $json.lead?.notes || null, tenant_id: $json.tenant_id || $json.business?.id || $json.business?.tenant_id || $json.business_id || \"\" }) }}",
           "sendBody": true,
-          "specifyBody": "json"
+          "contentType": "json",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
         },
         "typeVersion": 4.2
       },
       {
-        "id": "211ad8f7-ba7b-4162-94e4-9f8b55bc78a1",
-        "name": "HTTP Request — Get Stale Conversations",
-        "type": "n8n-nodes-base.httpRequest",
+        "id": "wf3-2-booking-result",
+        "name": "Set — Booking Result",
+        "type": "n8n-nodes-base.code",
         "position": [
-          880,
+          900,
           0
         ],
         "parameters": {
-          "url": "https://erp.heshly.com/api/method/heshly_core.api.conversations.get_stale",
-          "options": {}
+          "mode": "runOnceForAllItems",
+          "jsCode": "const raw = $input.first().json || {};\nconst input = (raw.message && typeof raw.message === 'object') ? raw.message : raw;\nconst success = input.success === true;\n\nreturn [{\n  json: {\n    success,\n    action: 'BOOK_APPOINTMENT',\n    status: success ? 'BOOKED' : 'FAILED',\n    appointment_id: input.appointment_id || null,\n    service: input.service || '',\n    scheduled_time: input.scheduled_time || null,\n    tenant_id: input.tenant_id || null,\n    message: (typeof input.message === 'string' ? input.message : null) || (\n      success ? 'Appointment booked successfully.' : 'Appointment booking failed.'\n    )\n  }\n}];"
         },
-        "typeVersion": 4.2
+        "typeVersion": 2
+      }
+    ],
+    "active": true,
+    "settings": {},
+    "versionId": "63ace1c4-ab0e-4e18-bdcf-e64321502b57",
+    "staticData": null,
+    "connections": {
+      "Execute Workflow Trigger": {
+        "main": [
+          [
+            {
+              "node": "Set — Normalize Booking Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Set — Normalize Booking Input": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request — Create Appointment",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request — Create Appointment": {
+        "main": [
+          [
+            {
+              "node": "Set — Booking Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "heshly-ai-action-update-crm-v1",
+    "name": "WF3/3 — AI Action — Update Lead / Customer",
+    "nodes": [
+      {
+        "id": "execute-wf3-3-trigger",
+        "name": "Execute Workflow Trigger — WF3/3",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "position": [
+          -608,
+          304
+        ],
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "data",
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "typeVersion": 1.1
       },
       {
-        "id": "609d03c4-aa2f-4045-9ab2-5004c966a22e",
-        "name": "HTTP Request — Handle Stale Conversations",
-        "type": "n8n-nodes-base.httpRequest",
+        "id": "normalize-wf3-3-input",
+        "name": "Set — Normalize CRM Update Input",
+        "type": "n8n-nodes-base.code",
         "position": [
-          1104,
-          0
+          -384,
+          304
         ],
         "parameters": {
-          "url": "https://erp.heshly.com/api/method/heshly_core.api.conversations.handle_stale",
+          "jsCode": "const envelope = $input.first().json || {};\nconst input = envelope.data || envelope;\nconst body = input.body && typeof input.body === \"object\" ? input.body : input;\nconst business = body.business || body.Business || {};\nconst customer = body.customer || body.Customer || {};\nconst lead = body.lead || body.Lead || {};\nconst entities = body.entities || body.Entities || {};\n\nreturn [{ json: {\n  Business: business,\n  Customer: customer,\n  Lead: lead,\n  Conversation: body.conversation || body.Conversation || {},\n  Message: body.message || body.Message || {},\n  Entities: entities,\n  tenant_id: business.id || business.tenant_id || body.tenant_id || \"\",\n  lead_id: entities.lead_id || lead.id || lead.lead_id || lead.heshly_lead_id || customer.lead_id || customer.id || \"\",\n  full_name: entities.name || entities.full_name || customer.name || lead.name || lead.full_name || customer.phone || \"Customer\",\n  phone: entities.phone || customer.phone || lead.phone || lead.mobile_no || \"\",\n  email: entities.email || customer.email || lead.email || lead.email_id || null\n} }];"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "update-wf3-3-lead",
+        "name": "HTTP Request — Update Lead / Customer",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          -160,
+          304
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.customers.update_lead",
+          "body": "={{ JSON.stringify({lead_id:$json.lead_id,full_name:$json.full_name,phone:$json.phone||null,email:$json.email||null,tenant_id:$json.tenant_id}) }}",
           "method": "POST",
-          "options": {},
-          "jsonBody": "={}",
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true,
+                "responseFormat": "json"
+              }
+            },
+            "alwaysOutputData": true
+          },
           "sendBody": true,
-          "specifyBody": "json"
+          "contentType": "raw",
+          "sendHeaders": true,
+          "rawContentType": "application/json",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
         },
         "typeVersion": 4.2
+      },
+      {
+        "id": "crm-update-result-wf3-3",
+        "name": "Set — CRM Update Result",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          64,
+          304
+        ],
+        "parameters": {
+          "jsCode": "const raw = $input.first().json || {};\nconst input = (raw.message && typeof raw.message === 'object') ? raw.message : raw;\nconst success = input.success === true;\nreturn [{ json: {\n  success,\n  action: 'UPDATE_LEAD_CUSTOMER',\n  status: success ? 'UPDATED' : 'FAILED',\n  lead: input.lead || null,\n  customer: input.customer || null,\n  message: (typeof input.message === 'string' ? input.message : null) || (success ? 'Lead/customer updated successfully.' : 'Lead/customer update failed.')\n} }];"
+        },
+        "typeVersion": 2
       }
     ],
     "active": true,
@@ -2597,56 +2367,284 @@
       "binaryMode": "separate",
       "executionOrder": "v1"
     },
-    "versionId": "e35a0a7e-952e-4fe8-8e13-3bff69c1ec9d",
+    "versionId": "f4b1e77c-cd70-4c24-afc9-a3c3d8a058ac",
     "staticData": null,
     "connections": {
-      "Schedule Trigger": {
+      "Execute Workflow Trigger — WF3/3": {
         "main": [
           [
             {
-              "node": "HTTP Request — Get Pending Follow-ups",
+              "node": "Set — Normalize CRM Update Input",
               "type": "main",
               "index": 0
             }
           ]
         ]
       },
-      "HTTP Request — Process Follow-ups": {
+      "Set — Normalize CRM Update Input": {
         "main": [
           [
             {
-              "node": "HTTP Request — Get Stale Conversations",
+              "node": "HTTP Request — Update Lead / Customer",
               "type": "main",
               "index": 0
             }
           ]
         ]
       },
-      "HTTP Request — Get Pending Follow-ups": {
+      "HTTP Request — Update Lead / Customer": {
         "main": [
           [
             {
-              "node": "HTTP Request — Process Follow-ups",
+              "node": "Set — CRM Update Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "8f3c2a91-7d64-4e52-b8a1-91c7f4e62d30",
+    "name": "WF3/1 — AI Action — Check Availability",
+    "nodes": [
+      {
+        "id": "wf31-trigger",
+        "name": "Execute Workflow Trigger",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "position": [
+          240,
+          320
+        ],
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "data",
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "typeVersion": 1.1
+      },
+      {
+        "id": "wf31-normalize",
+        "name": "Set — Availability Input",
+        "type": "n8n-nodes-base.set",
+        "position": [
+          464,
+          320
+        ],
+        "parameters": {
+          "options": {},
+          "assignments": {
+            "assignments": [
+              {
+                "id": "wf31-business",
+                "name": "Business",
+                "type": "object",
+                "value": "={{ $json.data?.Business || $json.Business || $json.business }}"
+              },
+              {
+                "id": "wf31-customer",
+                "name": "Customer",
+                "type": "object",
+                "value": "={{ $json.data?.Customer || $json.Customer || $json.customer }}"
+              },
+              {
+                "id": "wf31-entities",
+                "name": "Entities",
+                "type": "object",
+                "value": "={{ $json.data?.Entities || $json.Entities || $json.entities }}"
+              },
+              {
+                "id": "wf31-next-action",
+                "name": "next_action",
+                "type": "string",
+                "value": "={{ $json.data?.next_action || $json.next_action }}"
+              }
+            ]
+          }
+        },
+        "typeVersion": 3.4
+      },
+      {
+        "id": "wf31-http",
+        "name": "HTTP Request — Check Availability",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          688,
+          320
+        ],
+        "parameters": {
+          "url": "https://erp.heshly.com/api/method/heshly_core.api.availability.check_availability",
+          "body": "={{ JSON.stringify({\n  service: $json.Entities?.service || '',\n  preferred_date: ($json.Entities?.date || '').substring(0,10),\n  duration_minutes: $json.Entities?.duration_minutes || 30,\n  tenant_id: $json.Business?.tenant_id || $json.Business?.id || ''\n}) }}",
+          "method": "POST",
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true,
+                "responseFormat": "json"
+              }
+            }
+          },
+          "sendBody": true,
+          "contentType": "raw",
+          "rawContentType": "application/json"
+        },
+        "typeVersion": 4.2
+      },
+      {
+        "id": "wf31-switch",
+        "name": "Switch — Availability Status",
+        "type": "n8n-nodes-base.switch",
+        "position": [
+          912,
+          320
+        ],
+        "parameters": {
+          "rules": {
+            "values": [
+              {
+                "outputKey": "available",
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "leftValue": "",
+                    "caseSensitive": true,
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "wf31-true-condition",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ String($json.message?.available ?? $json.available) }}",
+                      "rightValue": "true"
+                    }
+                  ]
+                },
+                "renameOutput": true
+              },
+              {
+                "outputKey": "unavailable",
+                "conditions": {
+                  "options": {
+                    "version": 2,
+                    "leftValue": "",
+                    "caseSensitive": true,
+                    "typeValidation": "strict"
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "wf31-false-condition",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "leftValue": "={{ String($json.message?.available ?? $json.available) }}",
+                      "rightValue": "false"
+                    }
+                  ]
+                },
+                "renameOutput": true
+              }
+            ]
+          },
+          "options": {}
+        },
+        "typeVersion": 3.2
+      },
+      {
+        "id": "wf31-return-available",
+        "name": "Return — Available",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          1136,
+          224
+        ],
+        "parameters": {
+          "jsCode": "const src = ($json.message && typeof $json.message === 'object') ? $json.message : $json;\nreturn [{ json: {\n  success: true,\n  action: 'CHECK_AVAILABILITY',\n  available: src.available ?? false,\n  service: src.service ?? null,\n  preferred_date: src.preferred_date ?? null,\n  slots: src.slots ?? []\n} }];"
+        },
+        "typeVersion": 2
+      },
+      {
+        "id": "wf31-return-unavailable",
+        "name": "Return — Unavailable",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          1136,
+          416
+        ],
+        "parameters": {
+          "jsCode": "const src = ($json.message && typeof $json.message === 'object') ? $json.message : $json;\nreturn [{ json: {\n  success: true,\n  action: 'CHECK_AVAILABILITY',\n  available: false,\n  service: src.service ?? null,\n  preferred_date: src.preferred_date ?? null,\n  slots: src.slots ?? []\n} }];"
+        },
+        "typeVersion": 2
+      }
+    ],
+    "active": true,
+    "settings": {
+      "binaryMode": "separate",
+      "executionOrder": "v1"
+    },
+    "versionId": "6c298277-57f3-47b9-8570-6c8aeee5295d",
+    "staticData": null,
+    "connections": {
+      "Execute Workflow Trigger": {
+        "main": [
+          [
+            {
+              "node": "Set — Availability Input",
               "type": "main",
               "index": 0
             }
           ]
         ]
       },
-      "HTTP Request — Get Stale Conversations": {
+      "Set — Availability Input": {
         "main": [
           [
             {
-              "node": "HTTP Request — Handle Stale Conversations",
+              "node": "HTTP Request — Check Availability",
               "type": "main",
               "index": 0
             }
           ]
         ]
       },
-      "HTTP Request — Handle Stale Conversations": {
+      "Switch — Availability Status": {
         "main": [
-          []
+          [
+            {
+              "node": "Return — Available",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Return — Unavailable",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request — Check Availability": {
+        "main": [
+          [
+            {
+              "node": "Switch — Availability Status",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       }
     }
