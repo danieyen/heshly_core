@@ -246,10 +246,82 @@ class WhatsAppAPI:
 
 @frappe.whitelist(allow_guest=True)
 def resolve_tenant(phone_number_id=None):
+    # Tolerant to n8n wrapping: body/json/data and JSON strings, query param or JSON body
+    # Do not use frappe.session.user, User Business Membership, or business_id from n8n
+    # Do not default tenant_id to "heshly" - return whatever is stored (heshly is valid)
+    # Never return secrets
+    original = phone_number_id
+    # Try to extract from frappe request if not provided directly
+    if not phone_number_id:
+        try:
+            # frappe.form_dict contains query params and form data
+            fd = getattr(frappe, "form_dict", {}) or {}
+            if isinstance(fd, dict):
+                phone_number_id = fd.get("phone_number_id") or fd.get("phoneNumberId") or fd.get("phone_numberId")
+                if not phone_number_id:
+                    # check nested body/json/data in form_dict
+                    for wrap in ("body", "json", "data", "message"):
+                        if wrap in fd and isinstance(fd[wrap], dict):
+                            inner = fd[wrap]
+                            phone_number_id = inner.get("phone_number_id") or inner.get("phoneNumberId")
+                            if phone_number_id:
+                                break
+                            # handle JSON string inside
+                            if isinstance(inner, str):
+                                parsed = _parse_json_if_string(inner)
+                                if isinstance(parsed, dict):
+                                    phone_number_id = parsed.get("phone_number_id") or parsed.get("phoneNumberId")
+                                    if phone_number_id:
+                                        break
+        except Exception:
+            pass
+    if not phone_number_id:
+        try:
+            # frappe.request.data may contain raw JSON body
+            req_data = getattr(getattr(frappe, "request", None), "data", None)
+            if req_data:
+                if isinstance(req_data, (bytes, str)):
+                    parsed = _parse_json_if_string(req_data if isinstance(req_data, str) else req_data.decode("utf-8", errors="ignore"))
+                    if isinstance(parsed, dict):
+                        phone_number_id = parsed.get("phone_number_id") or parsed.get("phoneNumberId") or parsed.get("phone_numberId")
+                        if not phone_number_id:
+                            for wrap in ("body", "json", "data"):
+                                if wrap in parsed and isinstance(parsed[wrap], dict):
+                                    phone_number_id = parsed[wrap].get("phone_number_id") or parsed[wrap].get("phoneNumberId")
+                                    if phone_number_id:
+                                        break
+                elif isinstance(req_data, dict):
+                    phone_number_id = req_data.get("phone_number_id") or req_data.get("phoneNumberId")
+        except Exception:
+            pass
+    # Handle dict wrapping passed directly
+    if isinstance(phone_number_id, dict):
+        phone_number_id = phone_number_id.get("phone_number_id") or phone_number_id.get("phoneNumberId") or phone_number_id.get("phone_numberId") or phone_number_id.get("phone_number_id")
+    # Handle JSON string
+    parsed = _parse_json_if_string(phone_number_id) if isinstance(phone_number_id, str) else phone_number_id
+    if isinstance(parsed, dict):
+        phone_number_id = parsed.get("phone_number_id") or parsed.get("phoneNumberId") or parsed.get("phone_numberId") or original
     if not phone_number_id or not str(phone_number_id).strip():
         return {"success": False, "message": "phone_number_id is required"}
     phone_number_id = str(phone_number_id).strip()
-    config = WhatsAppConfigurationRepository().get_by_phone_number_id(phone_number_id)
+    try:
+        config = WhatsAppConfigurationRepository().get_by_phone_number_id(phone_number_id)
+    except Exception as e:
+        return {"success": False, "message": f"No active WhatsApp configuration found for phone_number_id: {phone_number_id}", "phone_number_id": phone_number_id}
     if not config:
         return {"success": False, "message": f"No active WhatsApp configuration found for phone_number_id: {phone_number_id}", "phone_number_id": phone_number_id}
-    return {"success": True, "tenant_id": config.tenant_id, "phone_number_id": config.phone_number_id}
+    # Do not reject tenant_id="heshly" - it is valid production data
+    # Only ensure tenant_id exists and is non-empty
+    tenant_id = getattr(config, "tenant_id", None)
+    # Fallback to dict access if config is dict-like
+    if tenant_id is None and isinstance(config, dict):
+        tenant_id = config.get("tenant_id")
+    if tenant_id is not None:
+        tenant_id = str(tenant_id).strip()
+    if not tenant_id:
+        return {"success": False, "message": f"No active WhatsApp configuration found for phone_number_id: {phone_number_id}", "phone_number_id": phone_number_id}
+    phone_out = getattr(config, "phone_number_id", None)
+    if phone_out is None and isinstance(config, dict):
+        phone_out = config.get("phone_number_id")
+    phone_out = str(phone_out).strip() if phone_out else phone_number_id
+    return {"success": True, "tenant_id": tenant_id, "phone_number_id": phone_out}
