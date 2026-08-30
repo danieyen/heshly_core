@@ -1,0 +1,264 @@
+{
+  "name": "Workflow 2 — AI Receptionist",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "execute-workflow-trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "business",
+              "name": "business",
+              "value": "={{ $json.data?.business || $json.body?.business || $json.business || {} }}",
+              "type": "object"
+            },
+            {
+              "id": "customer",
+              "name": "customer",
+              "value": "={{ $json.data?.customer || $json.body?.customer || $json.customer || {} }}",
+              "type": "object"
+            },
+            {
+              "id": "lead",
+              "name": "lead",
+              "value": "={{ $json.data?.lead || $json.body?.lead || $json.lead || {} }}",
+              "type": "object"
+            },
+            {
+              "id": "conversation",
+              "name": "conversation",
+              "value": "={{ $json.data?.conversation || $json.body?.conversation || $json.conversation || {} }}",
+              "type": "object"
+            },
+            {
+              "id": "conversation_history",
+              "name": "conversation_history",
+              "value": "={{ $json.data?.conversation_history || $json.body?.conversation_history || $json.conversation_history || $json.history || $json.messages || $json.data?.history || $json.body?.history || $json.conversation?.turns || $json.conversation?.history || [] }}",
+              "type": "array"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $json.data?.message || $json.body?.message || $json.message || {} }}",
+              "type": "object"
+            },
+            {
+              "id": "business_knowledge",
+              "name": "business_knowledge",
+              "value": "={{ $json.data?.business_knowledge || $json.body?.business_knowledge || $json.business_knowledge || {} }}",
+              "type": "object"
+            },
+            {
+              "id": "tenant_id",
+              "name": "tenant_id",
+              "value": "={{ $json.data?.tenant_id || $json.body?.tenant_id || $json.tenant_id || $json.tenantId || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "phone_number",
+              "name": "phone_number",
+              "value": "={{ $json.data?.phone_number || $json.body?.phone_number || $json.phone_number || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "phone_number_id",
+              "name": "phone_number_id",
+              "value": "={{ $json.data?.phone_number_id || $json.body?.phone_number_id || $json.phone_number_id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "conversation_id",
+              "name": "conversation_id",
+              "value": "={{ $json.data?.conversation_id || $json.body?.conversation_id || $json.conversation_id || $json.conversation?.conversation_id || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-normalize-ai-input",
+      "name": "Set — Normalize AI Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify({ business: $json.business, customer: $json.customer, lead: $json.lead, conversation: $json.conversation, conversation_history: $json.conversation_history, message: $json.message, business_knowledge: $json.business_knowledge, tenant_id: $json.tenant_id, phone_number: $json.phone_number, phone_number_id: $json.phone_number_id, conversation_id: $json.conversation_id }) }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are the AI Receptionist. Classify the latest customer message and return only structured output. next_action MUST be exactly one of CHECK_AVAILABILITY, BOOK_APPOINTMENT, UPDATE_LEAD_CUSTOMER, or OTHER. Never return REPLY. Use CHECK_AVAILABILITY for questions about whether a service or requested time is available. Use BOOK_APPOINTMENT only when the customer asks to make or confirm a booking. Use UPDATE_LEAD_CUSTOMER only for explicit profile changes. Use OTHER for greetings, general questions, or clarification. Do not ask for a clinic or business name when the supplied business context is sufficient."
+            }
+          ]
+        }
+      },
+      "id": "ai-agent-receptionist",
+      "name": "AI Agent — AI Receptionist",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.3,
+      "position": [
+        460,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-4o-mini",
+        "options": {
+          "maxTokens": 2000,
+          "temperature": 0.2
+        }
+      },
+      "id": "openrouter-chat-model",
+      "name": "OpenRouter Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        460,
+        220
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "GcGJq1Iw5o5FTjEN",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "fromJson",
+        "jsonSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"next_action\": {\n      \"type\": \"string\",\n      \"enum\": [\"CHECK_AVAILABILITY\", \"BOOK_APPOINTMENT\", \"UPDATE_LEAD_CUSTOMER\", \"OTHER\"],\n      \"description\": \"Exactly one of the four actions. Never REPLY.\"\n    },\n    \"confidence\": {\n      \"type\": \"number\",\n      \"minimum\": 0,\n      \"maximum\": 1\n    },\n    \"reasoning\": {\n      \"type\": \"string\"\n    },\n    \"service\": {\n      \"type\": \"string\"\n    },\n    \"date\": {\n      \"type\": \"string\"\n    },\n    \"time\": {\n      \"type\": \"string\"\n    },\n    \"response_text\": {\n      \"type\": \"string\",\n      \"description\": \"Customer-facing response if OTHER fallback\"\n    }\n  },\n  \"required\": [\"next_action\"],\n  \"additionalProperties\": true\n}",
+        "inputSchema": "{\n  \"next_action\": \"OTHER\",\n  \"confidence\": 0.9,\n  \"reasoning\": \"greeting\",\n  \"response_text\": \"Hello! How can I help you?\"\n}"
+      },
+      "id": "structured-output-parser",
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        680,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst output = input.output || input.response || input.text || input;\nlet parsed = output;\nif (typeof output === 'string') {\n  try { parsed = JSON.parse(output); } catch(e) { parsed = { next_action: 'OTHER', response_text: output }; }\n}\nif (parsed.output && typeof parsed.output === 'object') parsed = parsed.output;\nconst allowed = ['CHECK_AVAILABILITY','BOOK_APPOINTMENT','UPDATE_LEAD_CUSTOMER','OTHER'];\nlet next_action = parsed.next_action || parsed.nextAction || parsed.action || 'OTHER';\nnext_action = String(next_action).trim().toUpperCase();\nif (!allowed.includes(next_action)) next_action = 'OTHER';\n// Never allow REPLY\nif (next_action === 'REPLY') next_action = 'OTHER';\nconst upstream = $('Set — Normalize AI Input').first().json || {};\nreturn [{\n  json: {\n    ...upstream,\n    next_action,\n    confidence: parsed.confidence ?? 0.9,\n    reasoning: parsed.reasoning ?? '',\n    service: parsed.service || upstream.service || '',\n    date: parsed.date || upstream.date || '',\n    time: parsed.time || upstream.time || '',\n    response_text: parsed.response_text || parsed.response || parsed.message || '',\n    ai_output: parsed,\n    conversation_history: upstream.conversation_history || []\n  }\n}];"
+      },
+      "id": "code-normalize-ai-output",
+      "name": "Code — Normalize AI Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "heshly-ai-action-booking",
+        "data": "={{ JSON.stringify($json) }}"
+      },
+      "id": "execute-wf3-parent",
+      "name": "Execute Workflow — WF3 Parent",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        920,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set — Normalize AI Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set — Normalize AI Input": {
+      "main": [
+        [
+          {
+            "node": "AI Agent — AI Receptionist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent — AI Receptionist",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent — AI Receptionist",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent — AI Receptionist": {
+      "main": [
+        [
+          {
+            "node": "Code — Normalize AI Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code — Normalize AI Output": {
+      "main": [
+        [
+          {
+            "node": "Execute Workflow — WF3 Parent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "v3-fixed",
+  "id": "heshly-ai-receptionist-v3",
+  "meta": {
+    "instanceId": "heshly"
+  }
+}

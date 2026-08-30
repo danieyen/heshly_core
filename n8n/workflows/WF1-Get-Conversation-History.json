@@ -2,7 +2,10 @@
   "name": "Get Conversation History",
   "type": "n8n-nodes-base.httpRequest",
   "typeVersion": 4,
-  "position": [800, 400],
+  "position": [
+    800,
+    400
+  ],
   "parameters": {
     "url": "https://erp.heshly.com/api/method/heshly_core.api.conversations.get",
     "authentication": "predefinedCredentialType",
