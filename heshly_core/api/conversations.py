@@ -199,7 +199,6 @@ class ConversationAPI:
             customer_id = _get_param(data, ["customer_id", "customerId", "customer"])
             if not conversation_id and not phone_number and not customer_id:
                 return None
-            # Try to delegate to real manager
             for module_path, class_name in [
                 ("heshly_core.services.conversation.conversation_manager", "ConversationManager"),
                 ("heshly_core.services.conversation.conversation_store", "ConversationStore"),
@@ -238,7 +237,6 @@ class ConversationAPI:
             if not status:
                 status = "active"
             status = str(status).strip().lower()
-            # Delegate
             for module_path, class_name in [
                 ("heshly_core.services.conversation.conversation_manager", "ConversationManager"),
             ]:
@@ -250,7 +248,6 @@ class ConversationAPI:
                         inst = cls()
                         if hasattr(inst, "set_status"):
                             try:
-                                # Try to get conversation first
                                 conv = None
                                 if hasattr(inst, "get"):
                                     conv = inst.get(str(conversation_id).strip())
@@ -275,18 +272,16 @@ class ConversationAPI:
         try:
             data = _unwrap_payload(payload, kwargs)
             tenant_id = _extract_tenant_id(data) or "demo_tenant"
-            # Extract stale threshold params with tolerant keys
             hours = _get_param(data, ["hours", "stale_hours", "staleHours", "threshold_hours", "thresholdHours", "age_hours"])
             minutes = _get_param(data, ["minutes", "stale_minutes", "staleMinutes", "threshold_minutes"])
             limit = _get_param(data, ["limit", "count", "max", "page_size", "pageSize"])
             status = _get_param(data, ["status", "conversation_status", "filter_status"])
-            # Normalize
             try:
-                hours_val = int(str(hours).strip()) if hours is not None and str(hours).strip().isdigit() else 24
+                hours_val = int(str(hours).strip()) if hours is not None and str(hours).strip().lstrip("-").isdigit() else 24
             except Exception:
                 hours_val = 24
             try:
-                minutes_val = int(str(minutes).strip()) if minutes is not None and str(minutes).strip().isdigit() else 0
+                minutes_val = int(str(minutes).strip()) if minutes is not None and str(minutes).strip().lstrip("-").isdigit() else 0
             except Exception:
                 minutes_val = 0
             try:
@@ -298,8 +293,6 @@ class ConversationAPI:
             cutoff = datetime.now(UTC) - threshold
 
             conversations: list[dict[str, Any]] = []
-
-            # Try to delegate to real services
             delegated = False
             for module_path, class_name in [
                 ("heshly_core.services.conversation.conversation_recovery", "ConversationRecovery"),
@@ -314,12 +307,10 @@ class ConversationAPI:
                     if cls is None:
                         continue
                     inst = cls()
-                    # Try various method names
                     for method_name in ("get_stale_conversations", "get_stale", "list_stale", "find_stale", "get_stale_conversation_ids", "list_all", "list"):
                         if hasattr(inst, method_name):
                             try:
                                 fn = getattr(inst, method_name)
-                                # Try with tenant_id
                                 try:
                                     res = fn(tenant_id=tenant_id, cutoff=cutoff, limit=limit_val)  # type: ignore
                                 except TypeError:
@@ -338,7 +329,6 @@ class ConversationAPI:
                                             d = dict(item)
                                         else:
                                             continue
-                                        # Filter by cutoff if has updated_at
                                         try:
                                             updated = d.get("updated_at") or d.get("last_updated") or d.get("updatedAt")
                                             if updated:
@@ -350,10 +340,8 @@ class ConversationAPI:
                                                     updated_dt = None
                                                 if updated_dt and updated_dt > cutoff:
                                                     continue
-                                            # Check is_stale if recovery service
                                             if hasattr(inst, "is_stale"):
                                                 try:
-                                                    # Need conversation object
                                                     if hasattr(item, "conversation_id"):
                                                         if not inst.is_stale(item):  # type: ignore
                                                             continue
@@ -375,7 +363,6 @@ class ConversationAPI:
                 except Exception:
                     continue
 
-            # Always return success:true to prevent 417, even if no stale found
             return {
                 "success": True,
                 "tenant_id": tenant_id,
@@ -391,7 +378,6 @@ class ConversationAPI:
                 "message": f"Found {len(conversations)} stale conversations" if conversations else "No stale conversations found",
             }
         except Exception as e:
-            # Never raise 417 - always return success:true with empty list
             try:
                 tenant_id = _extract_tenant_id(_unwrap_payload(payload, kwargs)) or "demo_tenant"
             except Exception:
@@ -419,13 +405,11 @@ _api = ConversationAPI()
 
 @frappe.whitelist(allow_guest=True)
 def get(conversation_id=None, phone_number=None, phone_number_id=None, tenant_id=None, customer_id=None, **kwargs):
-    # Handle n8n wrapping: all params may be in kwargs or as JSON string
     payload = None
     if isinstance(conversation_id, dict) or isinstance(conversation_id, str) and conversation_id.strip().startswith("{"):
         payload = conversation_id
         conversation_id = None
     data = _unwrap_payload(payload, {"conversation_id": conversation_id, "phone_number": phone_number, "phone_number_id": phone_number_id, "tenant_id": tenant_id, "customer_id": customer_id, **kwargs})
-    # Re-extract after unwrap
     cid = _get_param(data, ["conversation_id", "conversationId", "id"])
     pn = _get_param(data, ["phone_number", "phoneNumber", "phone"])
     pnid = _get_param(data, ["phone_number_id", "phoneNumberId"])
