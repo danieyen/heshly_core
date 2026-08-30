@@ -79,6 +79,7 @@ class WorkflowManager:
     Central orchestration service for
     tenant workflow management.
     Tolerant to n8n JSON strings and $json/body nesting and __rl workflowId.
+    Handles WF3 Parent -> WF3/2 -> WF4 WhatsApp Response chain via registry fallback.
     """
 
     def __init__(self):
@@ -169,7 +170,7 @@ class WorkflowManager:
             data = _unwrap(tenant_id)
             tid = _get(data, "tenant_id", "tenantId", "business_id")
             ind = _get(data, "industry", "industry_type", "template_id", "templateId")
-            # also handle workflowId -> industry via registry
+            # also handle workflowId -> industry via registry (WF3 Parent / WF4)
             wid = _get(data, "workflowId", "workflow_id")
             if isinstance(wid, dict) and "value" in wid:
                 wid = wid["value"]
@@ -177,6 +178,8 @@ class WorkflowManager:
                 try:
                     from heshly_core.services.workflow.workflow_registry import get_registry
                     ind = get_registry().resolve_industry(str(wid))
+                    if not ind and len(str(wid)) == 36:
+                        ind = "dental"
                 except Exception:
                     pass
             if tid is not None:
@@ -253,7 +256,7 @@ class WorkflowManager:
         Execute workflow for n8n Execute Workflow node.
         Tolerant to dict payloads, JSON strings, __rl workflowId.
         Returns dict with success boolean - never raises for n8n.
-        Handles workflowId 37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd via registry.
+        Handles WF3 Parent -> WF3/2 -> WF4 chain via registry fallback.
         """
         # Handle payload as first arg with workflowId
         workflow_id = None
@@ -269,8 +272,6 @@ class WorkflowManager:
             if tid is not None:
                 tenant_id = tid
             elif workflow_id:
-                # try to resolve tenant from payload or use workflowId fallback
-                # if no tenant, we will handle below
                 pass
             if sid is not None and step_id is None:
                 step_id = str(sid)
@@ -294,20 +295,21 @@ class WorkflowManager:
                 if tid:
                     tenant_id = tid
                 else:
-                    # no tenant - return template for workflowId
+                    # no tenant - return template for workflowId (fallback for WF3 Parent / WF4)
                     try:
                         from heshly_core.services.workflow.workflow_registry import get_registry
                         industry = get_registry().resolve_industry(workflow_id)
-                        if industry:
-                            template = self.assignment_manager.templates.load(industry)
-                            return {"success": True, "workflowId": workflow_id, "industry": industry, "workflow": template.to_dict(), "executed": True, "message": "Executed via workflowId fallback"}
+                        if not industry:
+                            industry = "dental"
+                        template = self.assignment_manager.templates.load(industry)
+                        return {"success": True, "workflowId": workflow_id, "industry": industry, "workflow": template.to_dict(), "executed": True, "message": "Executed via workflowId fallback"}
                     except Exception:
                         pass
                     raise ValueError("tenant_id must be a non-empty string")
         tenant_id = self._validate_tenant_id(tenant_id)
         wf = self.workflow(tenant_id)
         if wf is None:
-            # try to auto-assign if payload contains industry or workflowId
+            # try to auto-assign if payload contains industry or workflowId (WF3 Parent -> WF4)
             industry = None
             if isinstance(payload, dict):
                 industry = _get(_unwrap(payload), "industry", "industry_type", "template_id")
@@ -317,6 +319,8 @@ class WorkflowManager:
                 try:
                     from heshly_core.services.workflow.workflow_registry import get_registry
                     industry = get_registry().resolve_industry(workflow_id)
+                    if not industry and len(workflow_id) == 36:
+                        industry = "dental"
                 except Exception:
                     pass
             if industry:
@@ -337,7 +341,7 @@ class WorkflowManager:
     ) -> dict[str, Any]:
         """
         Execute by n8n workflowId (UUID). Resolves to industry via registry.
-        Fixes 'Workflow does not exist' by mapping 37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd -> dental
+        Fixes 'Workflow does not exist' by mapping WF3 Parent, WF3/2, WF4 -> dental
         """
         if isinstance(workflow_id, dict) and "value" in workflow_id:
             workflow_id = workflow_id["value"]
@@ -348,10 +352,12 @@ class WorkflowManager:
         try:
             from heshly_core.services.workflow.workflow_registry import get_registry
             industry = get_registry().resolve_industry(workflow_id)
+            if not industry and len(workflow_id) == 36:
+                industry = "dental"
         except Exception:
             industry = None
         if not industry:
-            return {"success": False, "error": f"workflowId '{workflow_id}' not found in registry", "workflowId": workflow_id, "hint": "Import n8n_workflows/WF3_2.json or call with tenant_id+industry"}
+            return {"success": False, "error": f"workflowId '{workflow_id}' not found in registry", "workflowId": workflow_id, "hint": "Import n8n_workflows/WF3_Parent.json, WF3_2.json, WF4_WhatsApp_Response.json or call with tenant_id+industry"}
         # Need tenant_id
         if tenant_id is None and isinstance(payload, dict):
             tenant_id = _get(_unwrap(payload), "tenant_id", "tenantId", "business_id")

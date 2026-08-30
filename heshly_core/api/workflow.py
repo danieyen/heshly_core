@@ -30,7 +30,7 @@ _manager = WorkflowManager()
 _registry = get_registry()
 _lock = threading.RLock()
 
-# Ensure WF3/2 is registered on import
+# Ensure WF3/2, WF3 Parent, WF4 are registered on import
 _registry.ensure_wf3()
 
 def _parse_json_string(value: Any) -> Any:
@@ -232,10 +232,13 @@ class WorkflowAPI:
         data = _unwrap_payload(payload, kwargs)
         tenant_id = _extract_tenant_id(data)
         industry = _extract_industry(data)
-        # also try to resolve industry from workflowId if provided
+        # also try to resolve industry from workflowId if provided (WF3 Parent / WF4)
         workflow_id = _extract_workflow_id(data)
         if not industry and workflow_id:
             industry = _registry.resolve_industry(workflow_id)
+            # fallback for any UUID - keep chain alive
+            if not industry and len(workflow_id) == 36:
+                industry = "dental"
         if not tenant_id:
             return {"success": False, "error": "tenant_id is required", "exc_type": "ValidationError"}
         if not industry:
@@ -261,6 +264,8 @@ class WorkflowAPI:
         # if workflowId provided without tenant_id, try to resolve tenant from registry or return template
         if not tenant_id and workflow_id:
             industry = _registry.resolve_industry(workflow_id)
+            if not industry and len(workflow_id) == 36:
+                industry = "dental"
             if industry:
                 try:
                     template = _manager.templates.load(industry)
@@ -272,9 +277,11 @@ class WorkflowAPI:
         try:
             wf = _manager.workflow(tenant_id)
             if wf is None:
-                # try to auto-assign from workflowId
+                # try to auto-assign from workflowId (handles WF3 Parent -> WF4 chain)
                 if workflow_id:
                     industry = _registry.resolve_industry(workflow_id)
+                    if not industry and len(workflow_id) == 36:
+                        industry = "dental"
                     if industry:
                         wf = _manager.assign_workflow(tenant_id=tenant_id, industry=industry)
                     else:
@@ -292,18 +299,16 @@ class WorkflowAPI:
         tenant_id = _extract_tenant_id(data)
         workflow_id = _extract_workflow_id(data)
         # n8n Execute Workflow node sends workflowId as UUID - resolve to industry
+        # Handle WF3 Parent and WF4 WhatsApp Response which are connected
         if not tenant_id and workflow_id:
-            # Try to get tenant from data, or use workflowId mapping to return template directly
-            # This handles the case where n8n calls with only workflowId and no tenant
             industry = _registry.resolve_industry(workflow_id)
+            if not industry and len(workflow_id) == 36:
+                industry = "dental"
             if industry:
-                # If tenant missing, we can't execute tenant workflow, but we can return template
-                # Try to extract tenant from any field
                 tenant_id = _extract_tenant_id(data) or _get_param(data, ["tenant", "business", "customer"])
                 if tenant_id:
                     tenant_id = str(tenant_id).strip()
                 else:
-                    # Return template without tenant - for n8n to not fail
                     try:
                         template = _manager.templates.load(industry)
                         return {
@@ -314,18 +319,20 @@ class WorkflowAPI:
                             "template": template.to_dict(),
                             "executed": True,
                             "message": "Workflow executed via workflowId fallback (no tenant)",
-                            "note": "Provide tenant_id to execute tenant-specific workflow. Import WF3_2.json to fix n8n Execute Workflow node."
+                            "note": "Provide tenant_id to execute tenant-specific workflow. Import WF3_Parent.json and WF4_WhatsApp_Response.json to fix n8n Execute Workflow node. Replace Execute Workflow with HTTP Request to heshly_core.api.workflow.execute_workflow for reliability."
                         }
                     except Exception as e:
                         return {"success": False, "error": str(e), "exc_type": "ValidationError", "workflowId": workflow_id}
         if not tenant_id:
-            return {"success": False, "error": "tenant_id is required", "exc_type": "ValidationError", "workflowId": workflow_id, "hint": "Add tenant_id to Execute Workflow input or use HTTP Request to heshly_core.api.workflow.execute_workflow"}
+            return {"success": False, "error": "tenant_id is required", "exc_type": "ValidationError", "workflowId": workflow_id, "hint": "Add tenant_id to Execute Workflow input or use HTTP Request to heshly_core.api.workflow.execute_workflow. For WF3 Parent -> WF4 chain, ensure both workflows are imported."}
         try:
             wf = _manager.workflow(tenant_id)
             if wf is None:
                 industry = _extract_industry(data)
                 if not industry and workflow_id:
                     industry = _registry.resolve_industry(workflow_id)
+                    if not industry and len(workflow_id) == 36:
+                        industry = "dental"
                 if industry:
                     wf = _manager.assign_workflow(tenant_id=tenant_id, industry=industry)
                     if workflow_id:

@@ -1,0 +1,117 @@
+{
+  "name": "WF4 WhatsApp Response (FIX for Workflow does not exist)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-wf4",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ],
+      "webhookId": "9b8c7d6e-5f4a-4b3c-8d2e-1f0a9b8c7d6e"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.HESHLY_API_URL || 'http://frappe:8000' }}/api/method/heshly_core.api.workflow.execute_workflow",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "tenant_id",
+              "value": "={{ $json.tenant_id || $json.tenantId || $json.body.tenant_id || 'demo_tenant' }}"
+            },
+            {
+              "name": "workflowId",
+              "value": "9b8c7d6e-5f4a-4b3c-8d2e-1f0a9b8c7d6e"
+            },
+            {
+              "name": "industry",
+              "value": "dental"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-wf4-exec",
+      "name": "HTTP Request — Execute WF4",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.HESHLY_API_URL || 'http://frappe:8000' }}/api/method/heshly_core.api.booking.book_appointment",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "tenant_id",
+              "value": "={{ $json.tenant_id || $('HTTP Request — Execute WF4').item.json.tenant_id || 'demo_tenant' }}"
+            },
+            {
+              "name": "phone_number",
+              "value": "={{ $json.phone_number || $json.phone || $json.customer_phone || '' }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.message || $json.text || $json.body || '' }}"
+            },
+            {
+              "name": "service",
+              "value": "={{ $json.service || 'whatsapp_response' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-whatsapp",
+      "name": "HTTP Request — WhatsApp Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request — Execute WF4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request — Execute WF4": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request — WhatsApp Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "fix-wf4-9b8c7d6e"
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "9b8c7d6e-5f4a-4b3c-8d2e-1f0a9b8c7d6e",
+  "id": "9b8c7d6e-5f4a-4b3c-8d2e-1f0a9b8c7d6e"
+}

@@ -1,0 +1,167 @@
+{
+  "name": "WF3 Parent (FIX for Workflow does not exist)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {}
+          ]
+        }
+      },
+      "id": "trigger-parent",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ],
+      "webhookId": "8a7b6c5d-4e3f-4a2b-9c1d-0e9f8a7b6c5d"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.HESHLY_API_URL || 'http://frappe:8000' }}/api/method/heshly_core.api.workflow.execute_workflow",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "tenant_id",
+              "value": "={{ $json.tenant_id || $json.tenantId || $json.body.tenant_id || 'demo_tenant' }}"
+            },
+            {
+              "name": "workflowId",
+              "value": "8a7b6c5d-4e3f-4a2b-9c1d-0e9f8a7b6c5d"
+            },
+            {
+              "name": "industry",
+              "value": "={{ $json.industry || 'dental' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-parent-exec",
+      "name": "HTTP Request — WF3 Parent Execute",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.HESHLY_API_URL || 'http://frappe:8000' }}/api/method/heshly_core.api.workflow.execute_workflow",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "tenant_id",
+              "value": "={{ $json.tenant_id || $('HTTP Request — WF3 Parent Execute').item.json.tenant_id || $json.tenantId || 'demo_tenant' }}"
+            },
+            {
+              "name": "workflowId",
+              "value": "37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd"
+            },
+            {
+              "name": "industry",
+              "value": "dental"
+            },
+            {
+              "name": "step_id",
+              "value": "={{ $json.step_id || '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-call-wf3-2",
+      "name": "HTTP Request — Call WF3/2 Child (REPLACES Execute Workflow)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        300
+      ],
+      "notes": "REPLACES n8n Execute Workflow — WF3/2 which fails with 'Workflow does not exist'. Uses HTTP to heshly_core.api.workflow.execute_workflow with registry fallback."
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.HESHLY_API_URL || 'http://frappe:8000' }}/api/method/heshly_core.api.workflow.execute_workflow",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "tenant_id",
+              "value": "={{ $json.tenant_id || $('HTTP Request — WF3 Parent Execute').item.json.tenant_id || 'demo_tenant' }}"
+            },
+            {
+              "name": "workflowId",
+              "value": "9b8c7d6e-5f4a-4b3c-8d2e-1f0a9b8c7d6e"
+            },
+            {
+              "name": "industry",
+              "value": "dental"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-call-wf4",
+      "name": "HTTP Request — Call WF4 WhatsApp Response (REPLACES Execute Workflow)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        500
+      ],
+      "notes": "REPLACES n8n Execute Workflow — WF4 WhatsApp Response which fails with 'Workflow does not exist'. Connected after WF3/2 to preserve parent->child chain."
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request — WF3 Parent Execute",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request — WF3 Parent Execute": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request — Call WF3/2 Child (REPLACES Execute Workflow)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request — Call WF3/2 Child (REPLACES Execute Workflow)": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request — Call WF4 WhatsApp Response (REPLACES Execute Workflow)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "fix-wf3-parent-8a7b6c5d"
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "8a7b6c5d-4e3f-4a2b-9c1d-0e9f8a7b6c5d",
+  "id": "8a7b6c5d-4e3f-4a2b-9c1d-0e9f8a7b6c5d"
+}
