@@ -28,7 +28,6 @@ def _get_case_insensitive(data: dict, *candidates: str) -> Any | None:
         lc = c.lower().replace("_","").replace("-","")
         if lc in lower and lower[lc] not in (None, ""):
             return lower[lc]
-        # Capitalized
         cap = c.capitalize()
         if cap in data and data[cap] not in (None, ""):
             return data[cap]
@@ -56,7 +55,6 @@ class WorkflowStep:
             raise ValueError("action must be a non-empty string")
         if not isinstance(self.order, int) or self.order < 1:
             try:
-                # tolerant: coerce string numbers
                 if isinstance(self.order, str):
                     object.__setattr__(self, "order", int(self.order.strip()))
                 else:
@@ -66,7 +64,6 @@ class WorkflowStep:
             if self.order < 1:
                 raise ValueError("order must be an integer >= 1")
         if not isinstance(self.enabled, bool):
-            # tolerant: coerce string booleans
             if isinstance(self.enabled, str):
                 v = self.enabled.strip().lower()
                 if v in ("true", "1", "yes", "enabled"):
@@ -98,7 +95,6 @@ class WorkflowStep:
             data = _parse_json_string(data)
         if not isinstance(data, dict):
             raise ValueError("WorkflowStep data must be a dict")
-        # handle n8n wrapping
         for key in ("$json", "json", "body", "data", "step", "workflow_step"):
             if key in data and isinstance(data[key], (dict, str)):
                 val = _parse_json_string(data[key])
@@ -174,7 +170,6 @@ class WorkflowTemplate:
     def has_step(self, step_id: str) -> bool:
         if not step_id:
             return False
-        # tolerant: strip and case-sensitive but handle string coercion
         sid = str(step_id).strip()
         return any(s.step_id == sid for s in self.steps)
 
@@ -258,7 +253,6 @@ class WorkflowTemplate:
             data = _parse_json_string(data)
         if not isinstance(data, dict):
             raise ValueError("WorkflowTemplate data must be a dict")
-        # handle n8n wrapping
         for key in ("$json", "json", "body", "data", "template", "workflow", "workflow_template"):
             if key in data and isinstance(data[key], (dict, str)):
                 val = _parse_json_string(data[key])

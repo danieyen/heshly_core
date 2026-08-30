@@ -13,7 +13,10 @@
       "name": "When Executed by Another Workflow",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1,
-      "position": [460, 300],
+      "position": [
+        460,
+        300
+      ],
       "webhookId": "37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd"
     },
     {
@@ -48,7 +51,10 @@
       "name": "HTTP Request — Execute Heshly Workflow",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [680, 300],
+      "position": [
+        680,
+        300
+      ],
       "onError": "continueRegularOutput"
     },
     {
@@ -87,7 +93,10 @@
       "name": "HTTP Request — Create Appointment",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [900, 300],
+      "position": [
+        900,
+        300
+      ],
       "onError": "continueRegularOutput"
     }
   ],

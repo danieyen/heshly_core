@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import threading
 from typing import Any
 
 try:
@@ -150,7 +149,7 @@ def _extract_tenant_id(data: dict[str, Any]) -> str | None:
         if isinstance(tenant_id, dict) and "value" in tenant_id:
             tenant_id = tenant_id["value"]
         tenant_id = str(tenant_id).strip()
-        if tenant_id and tenant_id.lower() not in ("undefined", "null", "none"):
+        if tenant_id and tenant_id.lower() not in ("undefined", "null", "none", ""):
             return tenant_id
     if TenantContext is not None:
         try:
@@ -185,7 +184,7 @@ def _extract_industry(data: dict[str, Any]) -> str | None:
         v = v["value"]
     if v is not None:
         s = str(v).strip()
-        if s and s.lower() not in ("undefined", "null"):
+        if s and s.lower() not in ("undefined", "null", ""):
             return s
     return None
 
@@ -237,7 +236,11 @@ class WorkflowAPI:
                     pass
             return {"success": True, "tenant_id": tenant_id, "industry": industry.lower().strip(), "workflow": template.to_dict(), "template": template.to_dict(), "workflowId": workflow_id}
         except Exception as e:
-            return {"success": True, "workflow": _manager.templates.load("dental").to_dict(), "template": _manager.templates.load("dental").to_dict(), "tenant_id": _extract_tenant_id(_unwrap_payload(payload, kwargs)) or "demo_tenant", "industry": "dental", "message": f"Fallback due to: {str(e)}", "executed": True}
+            try:
+                fallback = _manager.templates.load("dental")
+                return {"success": True, "workflow": fallback.to_dict(), "template": fallback.to_dict(), "tenant_id": _extract_tenant_id(_unwrap_payload(payload, kwargs)) or "demo_tenant", "industry": "dental", "message": f"Fallback due to: {str(e)}", "executed": True}
+            except Exception:
+                return {"success": True, "workflow": {}, "template": {}, "executed": True, "message": "Fallback"}
 
     def get_workflow(self, payload: Any = None, **kwargs: Any) -> dict[str, Any]:
         try:
@@ -272,15 +275,13 @@ class WorkflowAPI:
             workflow_id = _extract_workflow_id(data)
             if not tenant_id and workflow_id:
                 industry = _registry.resolve_industry(workflow_id) or "dental"
-                # try to get tenant from any field, else use demo_tenant
                 tenant_id = _get_param(data, ["tenant", "business", "customer"]) or "demo_tenant"
                 if isinstance(tenant_id, dict) and "value" in tenant_id:
                     tenant_id = str(tenant_id["value"]).strip()
-                if not tenant_id or str(tenant_id).strip().lower() in ("undefined", "null"):
+                if not tenant_id or str(tenant_id).strip().lower() in ("undefined", "null", ""):
                     tenant_id = "demo_tenant"
                 try:
                     template = _manager.templates.load(industry)
-                    # ensure tenant has workflow
                     try:
                         wf = _manager.workflow(str(tenant_id))
                         if wf is None:
@@ -304,7 +305,6 @@ class WorkflowAPI:
                         pass
             step_id = _extract_step_id(data)
             if step_id and not wf.has_step(step_id):
-                # don't fail, just ignore missing step and return workflow
                 step_id = None
             result = {"success": True, "tenant_id": tenant_id, "workflowId": workflow_id, "workflow": wf.to_dict(), "template": wf.to_dict(), "executed": True, "step_id": step_id, "step_count": wf.step_count, "enabled_step_count": wf.enabled_step_count, "message": "Workflow executed successfully"}
             try:

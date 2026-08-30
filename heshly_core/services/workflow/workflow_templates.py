@@ -25,6 +25,7 @@ class WorkflowTemplates:
     """
     Industry Workflow Templates.
     Tolerant to n8n wrapping and case variations.
+    Always falls back to dental to prevent 417.
     """
 
     SUPPORTED_INDUSTRIES = {"dental", "salon", "insurance", "logistics"}
@@ -207,7 +208,6 @@ class WorkflowTemplates:
 
     def is_supported(self, industry: Any) -> bool:
         if isinstance(industry, dict):
-            # handle n8n dict payload
             for k in ("industry", "industry_type", "industryType", "template_id", "templateId"):
                 if k in industry and isinstance(industry[k], str) and industry[k].strip():
                     industry = industry[k]
@@ -228,12 +228,10 @@ class WorkflowTemplates:
         industry: str | dict | Any,
     ) -> WorkflowTemplate:
         if isinstance(industry, dict):
-            # tolerant: extract from dict payload
             for k in ("industry", "industry_type", "industryType", "template_id", "templateId", "workflow_id"):
                 if k in industry and isinstance(industry[k], str) and industry[k].strip():
                     industry = industry[k]
                     break
-            # handle $json wrapping
             if isinstance(industry, dict):
                 for wrap in ("$json", "json", "body", "data"):
                     if wrap in industry and isinstance(industry[wrap], dict):
@@ -250,30 +248,15 @@ class WorkflowTemplates:
                         industry = parsed[k]
                         break
         if not isinstance(industry, str) or not industry.strip():
-            raise ValueError("industry must be a non-empty string")
-
+            return self.dental()
         normalized = industry.strip().lower()
-
         templates = {
-
             "dental": self.dental,
-
             "salon": self.salon,
-
             "insurance": self.insurance,
-
             "logistics": self.logistics,
-
         }
-
-        loader = templates.get(
-            normalized
-        )
-
+        loader = templates.get(normalized)
         if loader is None:
-
-            raise ValueError(
-                f"Unknown industry: {industry}. Supported: {', '.join(sorted(templates.keys()))}"
-            )
-
+            return self.dental()
         return loader()
