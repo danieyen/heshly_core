@@ -11,6 +11,8 @@ class WorkflowTemplates:
     Industry Workflow Templates.
     """
 
+    SUPPORTED_INDUSTRIES = {"dental", "salon", "insurance", "logistics"}
+
     def dental(self) -> WorkflowTemplate:
 
         template = WorkflowTemplate(
@@ -184,10 +186,22 @@ class WorkflowTemplates:
 
         return template
 
+    def list_industries(self) -> list[str]:
+        return sorted(self.SUPPORTED_INDUSTRIES)
+
+    def is_supported(self, industry: str) -> bool:
+        if not isinstance(industry, str) or not industry.strip():
+            return False
+        return industry.strip().lower() in self.SUPPORTED_INDUSTRIES
+
     def load(
         self,
         industry: str,
     ) -> WorkflowTemplate:
+        if not isinstance(industry, str) or not industry.strip():
+            raise ValueError("industry must be a non-empty string")
+
+        normalized = industry.strip().lower()
 
         templates = {
 
@@ -202,13 +216,13 @@ class WorkflowTemplates:
         }
 
         loader = templates.get(
-            industry.lower()
+            normalized
         )
 
         if loader is None:
 
             raise ValueError(
-                f"Unknown industry: {industry}"
+                f"Unknown industry: {industry}. Supported: {', '.join(sorted(templates.keys()))}"
             )
 
         return loader()
