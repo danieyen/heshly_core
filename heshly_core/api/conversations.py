@@ -529,7 +529,28 @@ def get(conversation_id=None, phone_number=None, phone_number_id=None, tenant_id
                     }
         except Exception:
             pass
-        # if conversation_id provided but not found, return empty success (not error) to allow workflow to continue
+        # if conversation_id provided but not found, fall through to phone lookup if available
+        # instead of immediately returning not found, try phone_number as fallback for new contacts
+        if phone_number or customer_id or phone_number_id:
+            try:
+                conv = _try_get_conversation_by_phone(manager, tenant_id, str(phone_number).strip() if phone_number else None, str(customer_id).strip() if customer_id else None, str(phone_number_id).strip() if phone_number_id else None)
+                if conv:
+                    d = _to_dict(conv)
+                    if d is not None:
+                        messages = d.get("messages") or d.get("history") or d.get("conversation_history") or d.get("turns") or []
+                        return {
+                            "success": True,
+                            "conversation": d,
+                            "messages": messages,
+                            "history": messages,
+                            "conversation_id": d.get("conversation_id") or d.get("id") or d.get("name"),
+                            "phone_number": d.get("phone_number") or phone_number,
+                            "tenant_id": tenant_id or d.get("tenant_id"),
+                            "phone_number_id": d.get("phone_number_id") or phone_number_id,
+                        }
+            except Exception:
+                pass
+        # if conversation_id provided but not found and no phone fallback succeeded
         return {
             "success": True,
             "conversation": None,
@@ -542,7 +563,7 @@ def get(conversation_id=None, phone_number=None, phone_number_id=None, tenant_id
             "message": "Conversation not found",
         }
 
-    # 2) Try phone/customer lookup
+    # 2) Try phone/customer lookup - primary path for new WhatsApp contacts
     if phone_number or customer_id or phone_number_id:
         try:
             conv = _try_get_conversation_by_phone(manager, tenant_id, str(phone_number).strip() if phone_number else None, str(customer_id).strip() if customer_id else None, str(phone_number_id).strip() if phone_number_id else None)

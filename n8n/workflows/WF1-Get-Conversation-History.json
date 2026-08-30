@@ -1,0 +1,34 @@
+{
+  "name": "Get Conversation History",
+  "type": "n8n-nodes-base.httpRequest",
+  "typeVersion": 4,
+  "position": [800, 400],
+  "parameters": {
+    "url": "https://erp.heshly.com/api/method/heshly_core.api.conversations.get",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "frappeApi",
+    "method": "POST",
+    "sendBody": true,
+    "bodyParameters": {
+      "parameters": [
+        {
+          "name": "phone_number",
+          "value": "={{ $json.phone_number }}"
+        },
+        {
+          "name": "tenant_id",
+          "value": "={{ $json.tenant_id }}"
+        },
+        {
+          "name": "phone_number_id",
+          "value": "={{ $json.phone_number_id }}"
+        }
+      ]
+    },
+    "options": {
+      "bodyContentType": "json"
+    }
+  },
+  "notes": "Fixed: Uses phone_number/phone_number_id/tenant_id from Normalize Payload for new contacts where conversation_id does not exist yet. Previously sent conversation_id which is invalid for new WhatsApp contacts. tenant_id=heshly is valid production data.",
+  "notesInFlow": true
+}
