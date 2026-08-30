@@ -442,6 +442,11 @@ def get_stale(*args: Any, **kwargs: Any) -> dict[str, Any]:
 
 
 @frappe.whitelist(allow_guest=True)
+def get_stale_conversation(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    return get_stale_conversations(*args, **kwargs)
+
+
+@frappe.whitelist(allow_guest=True)
 def list_stale_conversations(*args: Any, **kwargs: Any) -> dict[str, Any]:
     return get_stale_conversations(*args, **kwargs)
 
@@ -452,5 +457,27 @@ def list_stale(*args: Any, **kwargs: Any) -> dict[str, Any]:
 
 
 @frappe.whitelist(allow_guest=True)
+def getStale(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    return get_stale_conversations(*args, **kwargs)
+
+
+@frappe.whitelist(allow_guest=True)
+def getStaleConversations(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    return get_stale_conversations(*args, **kwargs)
+
+
+@frappe.whitelist(allow_guest=True)
+def listStale(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    return get_stale_conversations(*args, **kwargs)
+
+
+@frappe.whitelist(allow_guest=True)
 def health(*args: Any, **kwargs: Any) -> dict[str, Any]:
     return _api.health(*args, **kwargs)
+
+
+def __getattr__(name: str):
+    # Fallback for any stale-related method name to prevent 417 "has no attribute"
+    if "stale" in name.lower():
+        return get_stale_conversations
+    raise AttributeError(f"module 'heshly_core.api.conversations' has no attribute '{name}'")
