@@ -1,14 +1,30 @@
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from heshly_core.models.workflow_template import (
     WorkflowStep,
     WorkflowTemplate,
 )
 
+def _parse_json_string(value: Any) -> Any:
+    if isinstance(value, str):
+        v = value.strip()
+        if not v:
+            return value
+        if (v.startswith("{") and v.endswith("}")) or (v.startswith("[") and v.endswith("]")):
+            try:
+                return json.loads(v)
+            except Exception:
+                return value
+    return value
+
 
 class WorkflowTemplates:
     """
     Industry Workflow Templates.
+    Tolerant to n8n wrapping and case variations.
     """
 
     SUPPORTED_INDUSTRIES = {"dental", "salon", "insurance", "logistics"}
@@ -189,15 +205,50 @@ class WorkflowTemplates:
     def list_industries(self) -> list[str]:
         return sorted(self.SUPPORTED_INDUSTRIES)
 
-    def is_supported(self, industry: str) -> bool:
+    def is_supported(self, industry: Any) -> bool:
+        if isinstance(industry, dict):
+            # handle n8n dict payload
+            for k in ("industry", "industry_type", "industryType", "template_id", "templateId"):
+                if k in industry and isinstance(industry[k], str) and industry[k].strip():
+                    industry = industry[k]
+                    break
+        if isinstance(industry, str):
+            parsed = _parse_json_string(industry)
+            if isinstance(parsed, dict):
+                for k in ("industry", "industry_type"):
+                    if k in parsed and isinstance(parsed[k], str):
+                        industry = parsed[k]
+                        break
         if not isinstance(industry, str) or not industry.strip():
             return False
         return industry.strip().lower() in self.SUPPORTED_INDUSTRIES
 
     def load(
         self,
-        industry: str,
+        industry: str | dict | Any,
     ) -> WorkflowTemplate:
+        if isinstance(industry, dict):
+            # tolerant: extract from dict payload
+            for k in ("industry", "industry_type", "industryType", "template_id", "templateId", "workflow_id"):
+                if k in industry and isinstance(industry[k], str) and industry[k].strip():
+                    industry = industry[k]
+                    break
+            # handle $json wrapping
+            if isinstance(industry, dict):
+                for wrap in ("$json", "json", "body", "data"):
+                    if wrap in industry and isinstance(industry[wrap], dict):
+                        inner = industry[wrap]
+                        for k in ("industry", "industry_type"):
+                            if k in inner and isinstance(inner[k], str):
+                                industry = inner[k]
+                                break
+        if isinstance(industry, str):
+            parsed = _parse_json_string(industry)
+            if isinstance(parsed, dict):
+                for k in ("industry", "industry_type", "template_id"):
+                    if k in parsed and isinstance(parsed[k], str):
+                        industry = parsed[k]
+                        break
         if not isinstance(industry, str) or not industry.strip():
             raise ValueError("industry must be a non-empty string")
 
