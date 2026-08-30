@@ -499,7 +499,13 @@ def get(conversation_id=None, phone_number=None, phone_number_id=None, tenant_id
         except Exception:
             pass
 
-    manager = ConversationManager(tenant_id=tenant_id) if tenant_id else ConversationManager()
+    try:
+        manager = ConversationManager(tenant_context=tenant_context)
+    except TypeError:
+        try:
+            manager = ConversationManager(tenant_id=tenant_id) if tenant_id else ConversationManager()
+        except Exception:
+            manager = ConversationManager()
 
     # 1) Try direct conversation_id lookup
     if conversation_id:
@@ -509,7 +515,7 @@ def get(conversation_id=None, phone_number=None, phone_number_id=None, tenant_id
                 conv = manager.get(cid)
                 if conv:
                     d = _to_dict(conv) or {}
-                    # normalize messages/history
+                    # normalize messages/history - turns is canonical
                     messages = d.get("messages") or d.get("history") or d.get("conversation_history") or d.get("turns") or []
                     return {
                         "success": True,
@@ -614,7 +620,13 @@ def create(**kwargs):
             TenantContext().set(str(tenant_id).strip())
         except Exception:
             pass
-    manager = ConversationManager(tenant_id=str(tenant_id).strip()) if tenant_id else ConversationManager()
+    try:
+        manager = ConversationManager(tenant_context=TenantContext())
+    except TypeError:
+        try:
+            manager = ConversationManager(tenant_id=str(tenant_id).strip()) if tenant_id else ConversationManager()
+        except Exception:
+            manager = ConversationManager()
     api = ConversationAPI(manager=manager)
     return api.create(data)
 
@@ -628,7 +640,13 @@ def add_message(**kwargs):
             TenantContext().set(str(tenant_id).strip())
         except Exception:
             pass
-    manager = ConversationManager(tenant_id=str(tenant_id).strip()) if tenant_id else ConversationManager()
+    try:
+        manager = ConversationManager(tenant_context=TenantContext())
+    except TypeError:
+        try:
+            manager = ConversationManager(tenant_id=str(tenant_id).strip()) if tenant_id else ConversationManager()
+        except Exception:
+            manager = ConversationManager()
     api = ConversationAPI(manager=manager)
     return api.add_message(data)
 
