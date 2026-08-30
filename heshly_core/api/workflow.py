@@ -324,7 +324,7 @@ class WorkflowAPI:
                     except Exception as e:
                         return {"success": False, "error": str(e), "exc_type": "ValidationError", "workflowId": workflow_id}
         if not tenant_id:
-            return {"success": False, "error": "tenant_id is required", "exc_type": "ValidationError", "workflowId": workflow_id, "hint": "Add tenant_id to Execute Workflow input or use HTTP Request to heshly_core.api.workflow.execute_workflow. For WF3 Parent -> WF4 chain, ensure both workflows are imported."}
+            return {"success": False, "error": "tenant_id is required", "exc_type": "ValidationError", "workflowId": workflow_id, "hint": "Add tenant_id to Execute Workflow input or use HTTP Request to heshly_core.api.workflow.execute_workflow. For WF3 Parent -> WF4 chain, ensure both workflows are imported. FIX: Replace n8n 'Execute Workflow' node with 'HTTP Request' node pointing to /api/method/heshly_core.api.workflow.execute_workflow"}
         try:
             wf = _manager.workflow(tenant_id)
             if wf is None:

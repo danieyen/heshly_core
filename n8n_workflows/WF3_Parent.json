@@ -39,7 +39,9 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "alwaysOutputData": true
+        }
       },
       "id": "http-parent-exec",
       "name": "HTTP Request — WF3 Parent Execute",
@@ -48,7 +50,8 @@
       "position": [
         680,
         300
-      ]
+      ],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -74,7 +77,9 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "alwaysOutputData": true
+        }
       },
       "id": "http-call-wf3-2",
       "name": "HTTP Request — Call WF3/2 Child (REPLACES Execute Workflow)",
@@ -84,7 +89,8 @@
         900,
         300
       ],
-      "notes": "REPLACES n8n Execute Workflow — WF3/2 which fails with 'Workflow does not exist'. Uses HTTP to heshly_core.api.workflow.execute_workflow with registry fallback."
+      "notes": "REPLACES n8n Execute Workflow — WF3/2 which fails with 'Workflow does not exist'. Uses HTTP to heshly_core.api.workflow.execute_workflow with registry fallback. DO NOT use Execute Workflow node here.",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -106,7 +112,9 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "alwaysOutputData": true
+        }
       },
       "id": "http-call-wf4",
       "name": "HTTP Request — Call WF4 WhatsApp Response (REPLACES Execute Workflow)",
@@ -116,7 +124,8 @@
         900,
         500
       ],
-      "notes": "REPLACES n8n Execute Workflow — WF4 WhatsApp Response which fails with 'Workflow does not exist'. Connected after WF3/2 to preserve parent->child chain."
+      "notes": "REPLACES n8n Execute Workflow — WF4 WhatsApp Response which fails with 'Workflow does not exist'. Connected after WF3/2 to preserve parent->child chain. DO NOT use Execute Workflow node here - use HTTP Request.",
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
