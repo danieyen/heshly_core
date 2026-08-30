@@ -1,0 +1,5 @@
+{
+  "phone_number": "={{ $json.phone_number }}",
+  "tenant_id": "={{ $json.tenant_id }}",
+  "phone_number_id": "={{ $json.phone_number_id }}"
+}
