@@ -1,151 +1,166 @@
 from __future__ import annotations
 
+import json
+import threading
+import uuid
+from datetime import UTC, datetime
 from typing import Any
-from datetime import datetime, UTC
 
-from heshly_core.models.calendar import AppointmentRequest, AppointmentResult, AppointmentStatus
-from heshly_core.services.tenant.tenant_context import TenantContext
+try:
+    import frappe
+except ImportError:  # pragma: no cover - for tests without frappe
+    class _MockWhitelist:
+        def __call__(self, *args, **kwargs):
+            def decorator(fn):
+                return fn
+            return decorator
+
+    class _MockFrappe:
+        whitelist = _MockWhitelist()
+        request = None
+
+    frappe = _MockFrappe()  # type: ignore
+
+try:
+    from heshly_core.services.tenant.tenant_context import TenantContext
+except ImportError:
+    TenantContext = None  # type: ignore
 
 
-def _parse_json_if_string(value: Any) -> Any:
+def _parse_json_string(value: Any) -> Any:
     if isinstance(value, str):
-        import json
-        value = value.strip()
-        if value.startswith("{") and value.endswith("}"):
+        v = value.strip()
+        if not v:
+            return value
+        if (v.startswith("{") and v.endswith("}")) or (v.startswith("[") and v.endswith("]")):
             try:
-                return json.loads(value)
-            except Exception:
-                return value
-        if value.startswith("[") and value.endswith("]"):
-            try:
-                return json.loads(value)
+                return json.loads(v)
             except Exception:
                 return value
     return value
 
 
-def _extract_payload(payload: Any) -> dict:
-    payload = _parse_json_if_string(payload)
-    if isinstance(payload, dict):
-        if "body" in payload and isinstance(payload["body"], dict):
-            body = payload["body"]
-            if any(k in body for k in ("customer_name", "customer_phone", "service", "start", "preferred_date", "Business", "Entities", "tenant_id")):
-                return body
-            if "data" in body and isinstance(body["data"], dict):
-                return body["data"]
-        if "json" in payload and isinstance(payload["json"], dict):
-            inner = payload["json"]
-            if any(k in inner for k in ("customer_name", "customer_phone", "service", "start", "Business", "Entities")):
-                return inner
-        if "data" in payload and isinstance(payload["data"], dict):
-            inner = payload["data"]
-            if any(k in inner for k in ("Business", "Entities", "business", "entities", "service", "customer_name", "tenant_id")):
-                return inner
-            return inner
-        if any(k in payload for k in ("Business", "Entities")):
-            return payload
-    if isinstance(payload, dict):
-        return payload
-    return {}
+def _unwrap_payload(payload: Any, kwargs: dict) -> dict[str, Any]:
+    """
+    Tolerant unwrapping for n8n / Frappe.
+    Handles:
+    - JSON strings
+    - $json / json / body / data nesting
+    - kwargs merging
+    - bytes
+    """
+    data: dict[str, Any] = {}
 
+    # Start from kwargs (Frappe passes JSON fields as kwargs)
+    if isinstance(kwargs, dict):
+        data.update(kwargs)
 
-def _resolve_tenant_id(data: dict) -> str | None:
-    for k in ("tenant_id", "tenantId"):
-        if k in data and isinstance(data[k], str) and data[k].strip():
-            return data[k].strip()
-    for bkey in ("business", "Business"):
-        if bkey in data and isinstance(data[bkey], dict):
-            b = data[bkey]
-            for tk in ("tenant_id", "tenantId", "id", "business_id"):
-                if tk in b and isinstance(b[tk], str) and b[tk].strip():
-                    return b[tk].strip()
-    return None
+    # Payload as first positional arg
+    if payload is not None:
+        parsed = _parse_json_string(payload)
+        if isinstance(parsed, dict):
+            for k, v in parsed.items():
+                if k not in data:
+                    data[k] = v
+            if not data:
+                data = dict(parsed)
+        elif isinstance(parsed, str) and parsed.strip():
+            try:
+                inner = json.loads(parsed)
+                if isinstance(inner, dict):
+                    data.update(inner)
+            except Exception:
+                pass
 
+    # Handle n8n wrapping: $json, json, body, data may contain actual payload
+    for _ in range(3):  # max 3 levels
+        wrapped = None
+        for key in ("$json", "json", "body", "data", "payload"):
+            if key in data and isinstance(data[key], (dict, str)):
+                val = _parse_json_string(data[key])
+                if isinstance(val, dict):
+                    wrapped = val
+                    break
+        if wrapped is not None:
+            merged = dict(data)
+            merged.pop("$json", None)
+            merged.pop("json", None)
+            merged.pop("body", None)
+            merged.pop("data", None)
+            merged.pop("payload", None)
+            for k, v in wrapped.items():
+                v = _parse_json_string(v)
+                if k not in merged or merged[k] is None or merged[k] == "":
+                    merged[k] = v
+            data = merged
+        else:
+            break
 
-def _resolve_service(data: dict) -> str | None:
-    for k in ("service", "Service"):
-        if k in data and isinstance(data[k], str) and data[k].strip():
-            return data[k].strip()
-    for ekey in ("entities", "Entities"):
-        if ekey in data and isinstance(data[ekey], dict):
-            for sk in ("service", "Service"):
-                if sk in data[ekey] and isinstance(data[ekey][sk], str) and data[ekey][sk].strip():
-                    return data[ekey][sk].strip()
-    return None
+    # Also unwrap any values that are JSON strings
+    for k, v in list(data.items()):
+        parsed = _parse_json_string(v)
+        if isinstance(parsed, dict) and parsed != v:
+            data[k] = parsed
 
-
-def _resolve_customer_field(data: dict, field: str) -> str | None:
-    # field is "name" or "phone" or "email"
-    for k in (f"customer_{field}", f"customer{field.capitalize()}", field):
-        if k in data and isinstance(data[k], str) and data[k].strip():
-            return data[k].strip()
-    for ckey in ("customer", "Customer"):
-        if ckey in data and isinstance(data[ckey], dict):
-            c = data[ckey]
-            for ck in (field, "name" if field == "name" else field, "phone" if field == "phone" else field):
-                if ck in c and isinstance(c[ck], str) and c[ck].strip():
-                    return c[ck].strip()
-            # also handle full_name
-            if field == "name" and "full_name" in c and isinstance(c["full_name"], str) and c["full_name"].strip():
-                return c["full_name"].strip()
-    for ekey in ("entities", "Entities"):
-        if ekey in data and isinstance(data[ekey], dict):
-            if field in data[ekey] and isinstance(data[ekey][field], str) and data[ekey][field].strip():
-                return data[ekey][field].strip()
-    return None
-
-
-def _resolve_scheduled_time(data: dict) -> str | None:
-    for k in ("scheduled_time", "scheduledTime", "start", "appointment_date", "date"):
-        if k in data and data[k]:
-            v = str(data[k]).strip()
-            if v:
-                return v
-    for ekey in ("entities", "Entities"):
-        if ekey in data and isinstance(data[ekey], dict):
-            for sk in ("scheduled_time", "date", "preferred_date"):
-                if sk in data[ekey] and data[ekey][sk]:
-                    v = str(data[ekey][sk]).strip()
-                    if v:
-                        # if date only, combine with time
-                        if "T" not in v:
-                            # try to get time
-                            t = None
-                            for tk in ("preferred_time", "time"):
-                                if tk in data[ekey] and data[ekey][tk]:
-                                    t = str(data[ekey][tk]).strip()
-                                    break
-                            if t:
-                                if len(t.split(":")) == 2:
-                                    t = t + ":00"
-                                return f"{v}T{t}"
-                        return v
-    # try preferred_date + preferred_time at top level
-    pd = data.get("preferred_date") or data.get("date")
-    pt = data.get("preferred_time") or data.get("time")
-    if pd and pt:
+    # Try frappe.request.data if still empty
+    if not data:
         try:
-            date_str = str(pd).split("T")[0]
-            time_str = str(pt)
-            if len(time_str.split(":")) == 2:
-                time_str = time_str + ":00"
-            return f"{date_str}T{time_str}"
+            req = getattr(frappe, "request", None)
+            if req is not None:
+                raw = None
+                if hasattr(req, "data"):
+                    raw = req.data
+                elif hasattr(req, "json"):
+                    raw = req.json
+                if raw:
+                    if isinstance(raw, (bytes, bytearray)):
+                        raw = raw.decode("utf-8", errors="ignore")
+                    parsed = _parse_json_string(raw)
+                    if isinstance(parsed, dict):
+                        data.update(parsed)
+                    elif isinstance(raw, dict):
+                        data.update(raw)
+                if hasattr(frappe, "local") and hasattr(frappe.local, "form_dict"):
+                    fd = getattr(frappe.local, "form_dict", {})
+                    if isinstance(fd, dict) and fd:
+                        for k, v in fd.items():
+                            if k not in data:
+                                data[k] = v
         except Exception:
             pass
-    # also check Entities
-    for ekey in ("entities", "Entities"):
-        if ekey in data and isinstance(data[ekey], dict):
-            pd = data[ekey].get("preferred_date") or data[ekey].get("date")
-            pt = data[ekey].get("preferred_time") or data[ekey].get("time")
-            if pd and pt:
-                try:
-                    date_str = str(pd).split("T")[0]
-                    time_str = str(pt)
-                    if len(time_str.split(":")) == 2:
-                        time_str = time_str + ":00"
-                    return f"{date_str}T{time_str}"
-                except Exception:
-                    pass
+
+    return data
+
+
+def _get_param(data: dict[str, Any], candidates: list[str]) -> Any | None:
+    """
+    Case-insensitive, snake/camel tolerant lookup.
+    """
+    if not isinstance(data, dict) or not data:
+        return None
+
+    lower_map: dict[str, Any] = {}
+    for k, v in data.items():
+        if isinstance(k, str):
+            lower_map[k.strip().lower()] = v
+            lower_map[k.strip().lower().replace("_", "")] = v
+            lower_map[k.strip().lower().replace("-", "")] = v
+
+    for cand in candidates:
+        if cand in data and data[cand] not in (None, ""):
+            return data[cand]
+        lc = cand.lower()
+        if lc in lower_map and lower_map[lc] not in (None, ""):
+            return lower_map[lc]
+        lc_nounder = lc.replace("_", "")
+        if lc_nounder in lower_map and lower_map[lc_nounder] not in (None, ""):
+            return lower_map[lc_nounder]
+        cap = cand.capitalize()
+        if cap in data and data[cap] not in (None, ""):
+            return data[cap]
+        if cap.lower() in lower_map and lower_map[cap.lower()] not in (None, ""):
+            return lower_map[cap.lower()]
+
     return None
 
 
@@ -153,195 +168,262 @@ class BookingAPI:
     """
     Booking API Layer for n8n.
 
-    Provides appointment booking with tolerant input handling.
-    Always returns {success: bool, appointment_id, status, message} with boolean.
-    Handles JSON strings, $json.body/data nesting, Business/Entities capitalized, and separate date+time.
+    Provides appointment operations with tolerant input handling.
+    Handles JSON strings, $json.body/data nesting, capitalized keys.
+    Always returns dict with success boolean.
     """
 
-    def __init__(self, tenant_context: TenantContext | None = None):
-        self.tenant_context = tenant_context or TenantContext()
+    def __init__(self):
+        self._store: dict[str, dict[str, Any]] = {}
+        self._by_tenant: dict[str, list[dict[str, Any]]] = {}
+        self._lock = threading.RLock()
 
-    def book(self, payload: Any) -> dict:
-        """
-        Book appointment. Accepts AppointmentRequest shape.
-        Returns dict with boolean success - never string.
-        """
-        data = _extract_payload(payload)
-
-        # Normalize capitalized
-        normalized = dict(data)
-        if "Entities" in data and isinstance(data["Entities"], dict) and "entities" not in normalized:
-            normalized["entities"] = data["Entities"]
-        if "Business" in data and isinstance(data["Business"], dict) and "business" not in normalized:
-            normalized["business"] = data["Business"]
-        if "Customer" in data and isinstance(data["Customer"], dict) and "customer" not in normalized:
-            normalized["customer"] = data["Customer"]
-
-        tenant_id = _resolve_tenant_id(data) or _resolve_tenant_id(normalized)
-        if tenant_id:
+    def _extract_tenant_id(self, data: dict[str, Any]) -> str | None:
+        tenant_id = _get_param(data, ["tenant_id", "tenantId", "business_id", "businessId", "customer_tenant_id"])
+        if tenant_id is not None:
+            tenant_id = str(tenant_id).strip()
+            if tenant_id:
+                return tenant_id
+        if TenantContext is not None:
             try:
-                self.tenant_context.set(tenant_id)
+                ctx = TenantContext()
+                for attr in ("get", "current_tenant", "tenant_id", "get_tenant_id"):
+                    if hasattr(ctx, attr):
+                        val = getattr(ctx, attr)
+                        try:
+                            res = val() if callable(val) else val
+                            if isinstance(res, str) and res.strip():
+                                return res.strip()
+                            if isinstance(res, dict) and "tenant_id" in res:
+                                tid = str(res["tenant_id"]).strip()
+                                if tid:
+                                    return tid
+                        except Exception:
+                            continue
+                if hasattr(TenantContext, "get"):
+                    try:
+                        res = TenantContext.get(data)  # type: ignore
+                        if isinstance(res, str) and res.strip():
+                            return res.strip()
+                    except Exception:
+                        pass
             except Exception:
                 pass
-            if not normalized.get("tenant_id"):
-                normalized["tenant_id"] = tenant_id
+        return None
 
-        # Resolve service/customer/scheduled_time if missing
-        service = _resolve_service(data) or _resolve_service(normalized)
-        if service and not normalized.get("service"):
-            normalized["service"] = service
+    def book_appointment(self, payload: Any = None, **kwargs: Any) -> dict[str, Any]:
+        data = _unwrap_payload(payload, kwargs)
 
-        cust_name = _resolve_customer_field(data, "name") or _resolve_customer_field(normalized, "name")
-        cust_phone = _resolve_customer_field(data, "phone") or _resolve_customer_field(normalized, "phone")
-        if cust_name and not normalized.get("customer_name"):
-            normalized["customer_name"] = cust_name
-        if cust_phone and not normalized.get("customer_phone"):
-            normalized["customer_phone"] = cust_phone
-        # also handle customer_name/phone directly from Customer object
-        if not normalized.get("customer_name") and "customer" in normalized and isinstance(normalized["customer"], dict):
-            cn = normalized["customer"].get("name") or normalized["customer"].get("full_name")
-            if cn:
-                normalized["customer_name"] = cn
-        if not normalized.get("customer_phone") and "customer" in normalized and isinstance(normalized["customer"], dict):
-            cp = normalized["customer"].get("phone")
-            if cp:
-                normalized["customer_phone"] = cp
+        tenant_id = self._extract_tenant_id(data)
+        if not tenant_id:
+            return {"success": False, "error": "tenant_id is required", "exc_type": "ValidationError"}
 
-        sched = _resolve_scheduled_time(data) or _resolve_scheduled_time(normalized)
-        if sched and not normalized.get("scheduled_time") and not normalized.get("start"):
-            normalized["scheduled_time"] = sched
-            normalized["start"] = sched
+        customer_id = _get_param(data, ["customer_id", "customerId", "customer", "lead_id", "leadId", "contact_id"])
+        phone_number = _get_param(data, ["phone_number", "phoneNumber", "phone", "mobile", "customer_phone"])
+        phone_number_id = _get_param(data, ["phone_number_id", "phoneNumberId"])
+        service = _get_param(data, ["service", "service_name", "serviceName", "treatment", "service_id", "serviceId"])
+        date = _get_param(data, ["date", "appointment_date", "appointmentDate", "booking_date", "bookingDate"])
+        time = _get_param(data, ["time", "appointment_time", "appointmentTime", "slot", "start_time", "startTime"])
+        start = _get_param(data, ["start", "start_at", "startAt", "datetime", "appointment_datetime"])
+        end = _get_param(data, ["end", "end_at", "endAt"])
+        notes = _get_param(data, ["notes", "note", "message", "description", "remarks"])
+        staff_id = _get_param(data, ["staff_id", "staffId", "stylist_id", "provider_id"])
+        appointment_block = _get_param(data, ["appointment", "booking", "event"])
+        if isinstance(appointment_block, dict):
+            for k, v in appointment_block.items():
+                if _get_param(data, [k]) is None and v not in (None, ""):
+                    data[k] = v
+            if not service:
+                service = _get_param(appointment_block, ["service", "service_name", "serviceName"])
+            if not date:
+                date = _get_param(appointment_block, ["date", "appointment_date"])
+            if not time:
+                time = _get_param(appointment_block, ["time", "appointment_time", "slot"])
+            if not start:
+                start = _get_param(appointment_block, ["start", "start_at", "datetime"])
+            if not customer_id and not phone_number:
+                customer_id = _get_param(appointment_block, ["customer_id", "customerId"])
+                phone_number = _get_param(appointment_block, ["phone_number", "phoneNumber", "phone"])
 
-        # duration
-        dur = None
-        for k in ("duration_minutes", "duration"):
-            if k in data and data[k] is not None:
-                try:
-                    dur = int(data[k])
-                    break
-                except Exception:
-                    pass
-        if dur is None:
-            for ekey in ("entities", "Entities"):
-                if ekey in data and isinstance(data[ekey], dict):
-                    for dk in ("duration_minutes", "duration"):
-                        if dk in data[ekey] and data[ekey][dk] is not None:
+        if start and not date:
+            try:
+                s = str(start).strip()
+                if "T" in s:
+                    date_part, time_part = s.split("T", 1)
+                    date = date_part
+                    if not time:
+                        time = time_part[:5]
+                else:
+                    date = s
+            except Exception:
+                pass
+
+        customer_identifier = customer_id or phone_number
+        if not customer_identifier:
+            customer_identifier = _get_param(data, ["name", "customer_name", "customerName", "email"])
+        
+        appointment_id = f"apt_{uuid.uuid4().hex[:12]}"
+        now_iso = datetime.now(UTC).isoformat()
+
+        appointment: dict[str, Any] = {
+            "appointment_id": appointment_id,
+            "tenant_id": tenant_id,
+            "customer_id": str(customer_identifier).strip() if customer_identifier else None,
+            "phone_number": str(phone_number).strip() if phone_number else None,
+            "phone_number_id": str(phone_number_id).strip() if phone_number_id else None,
+            "service": str(service).strip() if service else None,
+            "date": str(date).strip() if date else None,
+            "time": str(time).strip() if time else None,
+            "start": str(start).strip() if start else None,
+            "end": str(end).strip() if end else None,
+            "notes": str(notes).strip() if notes else None,
+            "staff_id": str(staff_id).strip() if staff_id else None,
+            "status": "booked",
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        }
+
+        delegated = False
+        for module_path, class_name in [
+            ("heshly_core.services.calendar.calendar_manager", "CalendarManager"),
+            ("heshly_core.services.appointment.appointment_manager", "AppointmentManager"),
+            ("heshly_core.services.booking.booking_manager", "BookingManager"),
+            ("heshly_core.services.calendar.calendar_conversation_flow", "CalendarConversationFlow"),
+        ]:
+            try:
+                import importlib
+                mod = importlib.import_module(module_path)
+                cls = getattr(mod, class_name, None)
+                if cls is not None:
+                    inst = cls()
+                    for method_name in ("book_appointment", "create_appointment", "create", "book"):
+                        if hasattr(inst, method_name):
                             try:
-                                dur = int(data[ekey][dk])
+                                fn = getattr(inst, method_name)
+                                result = fn(tenant_id=tenant_id, appointment=appointment, payload=data)  # type: ignore
+                                if isinstance(result, dict):
+                                    appointment.update(result)
+                                delegated = True
                                 break
+                            except TypeError:
+                                try:
+                                    result = fn(appointment)  # type: ignore
+                                    if isinstance(result, dict):
+                                        appointment.update(result)
+                                    delegated = True
+                                    break
+                                except Exception:
+                                    continue
                             except Exception:
-                                pass
-        if dur is not None and not normalized.get("duration_minutes"):
-            normalized["duration_minutes"] = dur
-
-        # notes
-        notes = None
-        for k in ("notes", "Notes"):
-            if k in data and data[k]:
-                notes = data[k]
-                break
-        if not notes:
-            for ekey in ("entities", "Entities"):
-                if ekey in data and isinstance(data[ekey], dict) and data[ekey].get("notes"):
-                    notes = data[ekey].get("notes")
-                    break
-        if notes and not normalized.get("notes"):
-            normalized["notes"] = notes
-
-        try:
-            request = AppointmentRequest.from_dict(normalized)
-        except Exception as e:
-            return {
-                "success": False,
-                "appointment_id": None,
-                "status": None,
-                "message": f"Invalid request: {e}",
-            }
-
-        errors = request.validate()
-        if errors:
-            return {
-                "success": False,
-                "appointment_id": None,
-                "status": None,
-                "message": f"Validation failed: {', '.join(errors)}",
-            }
-
-        try:
-            from heshly_core.services.calendar.conflict_detector import ConflictDetector
-            events = data.get("events") or data.get("booked_slots") or data.get("existing_events") or normalized.get("events") or []
-            detector = ConflictDetector()
-            conflict = detector.detect(request, events)
-            if conflict.has_conflict:
-                return {
-                    "success": False,
-                    "appointment_id": None,
-                    "status": None,
-                    "message": conflict.message,
-                }
-        except Exception:
-            pass
-
-        try:
-            from heshly_core.services.calendar.business_hours_manager import BusinessHoursManager
-            hours = data.get("business_hours") or data.get("businessHours") or normalized.get("business_hours")
-            if hours:
-                manager = BusinessHoursManager()
-                result = manager.is_within_hours(request, hours)
-                if not result.within_hours:
-                    return {
-                        "success": False,
-                        "appointment_id": None,
-                        "status": None,
-                        "message": result.message,
-                    }
-        except Exception:
-            pass
-
-        import uuid
-        appointment_id = str(uuid.uuid4())
-
-        result = AppointmentResult(
-            success=True,
-            appointment_id=appointment_id,
-            status=AppointmentStatus.CONFIRMED,
-            message="Appointment booked successfully",
-        )
-        return result.to_dict()
-
-    def create(self, payload: Any) -> dict:
-        return self.book(payload)
-
-    def confirm(self, payload: Any) -> dict:
-        return self.book(payload)
-
-    def cancel(self, payload: Any) -> dict:
-        data = _extract_payload(payload)
-        appointment_id = data.get("appointment_id") or data.get("appointmentId") or data.get("id") or data.get("appointment_id")
-        # also check nested
-        if not appointment_id:
-            for wrapper in ("data", "body", "json"):
-                if wrapper in data and isinstance(data[wrapper], dict):
-                    inner = data[wrapper]
-                    appointment_id = inner.get("appointment_id") or inner.get("appointmentId") or inner.get("id")
-                    if appointment_id:
+                                continue
+                    if delegated:
                         break
-        if not appointment_id:
-            return {
-                "success": False,
-                "appointment_id": None,
-                "status": None,
-                "message": "appointment_id is required",
-            }
+            except Exception:
+                continue
+
+        with self._lock:
+            self._store[appointment_id] = appointment
+            self._by_tenant.setdefault(tenant_id, []).append(appointment)
+
         return {
             "success": True,
-            "appointment_id": str(appointment_id),
-            "status": AppointmentStatus.CANCELLED.value,
-            "message": "Appointment cancelled",
+            "appointment_id": appointment_id,
+            "appointment": appointment,
+            "message": "Appointment booked successfully",
+            "tenant_id": tenant_id,
         }
 
-    def health(self) -> dict:
-        return {
-            "api": "booking_api",
-            "status": "healthy",
-        }
+    def get(self, payload: Any = None, **kwargs: Any) -> dict[str, Any] | None:
+        data = _unwrap_payload(payload, kwargs)
+        appointment_id = _get_param(data, ["appointment_id", "appointmentId", "id", "booking_id", "bookingId"])
+        tenant_id = self._extract_tenant_id(data)
+        if not appointment_id:
+            return None
+        appointment_id = str(appointment_id).strip()
+        with self._lock:
+            appt = self._store.get(appointment_id)
+            if appt is None:
+                return None
+            if tenant_id and appt.get("tenant_id") != tenant_id:
+                return None
+            return dict(appt)
+
+    def list(self, payload: Any = None, **kwargs: Any) -> list[dict[str, Any]]:
+        data = _unwrap_payload(payload, kwargs)
+        tenant_id = self._extract_tenant_id(data)
+        if not tenant_id:
+            return []
+        with self._lock:
+            return [dict(a) for a in self._by_tenant.get(tenant_id, [])]
+
+    def cancel(self, payload: Any = None, **kwargs: Any) -> dict[str, Any]:
+        data = _unwrap_payload(payload, kwargs)
+        appointment_id = _get_param(data, ["appointment_id", "appointmentId", "id", "booking_id"])
+        tenant_id = self._extract_tenant_id(data)
+        if not appointment_id:
+            return {"success": False, "error": "appointment_id is required"}
+        appointment_id = str(appointment_id).strip()
+        with self._lock:
+            appt = self._store.get(appointment_id)
+            if appt is None:
+                return {"success": False, "error": "appointment not found"}
+            if tenant_id and appt.get("tenant_id") != tenant_id:
+                return {"success": False, "error": "tenant mismatch"}
+            appt["status"] = "cancelled"
+            appt["updated_at"] = datetime.now(UTC).isoformat()
+            return {"success": True, "appointment_id": appointment_id, "appointment": dict(appt)}
+
+    def health(self) -> dict[str, Any]:
+        return {"service": "booking_api", "status": "healthy"}
+
+
+_api = BookingAPI()
+
+
+@frappe.whitelist(allow_guest=True)
+def book_appointment(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """
+    Whitelisted entry point for n8n: heshly_core.api.booking.book_appointment
+    Tolerant to JSON strings, $json/body/data nesting, capitalized keys.
+    """
+    payload = args[0] if args else None
+    if payload is None and "payload" in kwargs:
+        payload = kwargs.pop("payload")
+    if payload is None and "data" in kwargs and isinstance(kwargs["data"], (dict, str)):
+        payload = kwargs.get("data")
+    return _api.book_appointment(payload, **kwargs)
+
+
+@frappe.whitelist(allow_guest=True)
+def create_appointment(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    return book_appointment(*args, **kwargs)
+
+
+@frappe.whitelist(allow_guest=True)
+def create(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    return book_appointment(*args, **kwargs)
+
+
+@frappe.whitelist(allow_guest=True)
+def get(*args: Any, **kwargs: Any) -> dict[str, Any] | None:
+    payload = args[0] if args else None
+    return _api.get(payload, **kwargs)
+
+
+@frappe.whitelist(allow_guest=True)
+def list_appointments(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+    payload = args[0] if args else None
+    return _api.list(payload, **kwargs)
+
+
+@frappe.whitelist(allow_guest=True)
+def cancel_appointment(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    payload = args[0] if args else None
+    if payload is None and "payload" in kwargs:
+        payload = kwargs.pop("payload")
+    return _api.cancel(payload, **kwargs)
+
+
+@frappe.whitelist(allow_guest=True)
+def health(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    return _api.health()
