@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import frappe
+from heshly_core.repositories.whatsapp_configuration_repository import WhatsAppConfigurationRepository
 from heshly_core.services.whatsapp.webhook.webhook_models import IncomingMessageEvent, WebhookEventType, WebhookProcessingResult
 from heshly_core.services.whatsapp.webhook.duplicate_event_detector import WhatsAppDuplicateEventDetector
 from heshly_core.services.whatsapp.api.authentication import WhatsAppAuthentication
@@ -240,3 +242,68 @@ class WhatsAppAPI:
             "api": "whatsapp_api",
             "status": "healthy",
         }
+
+
+@frappe.whitelist()
+def resolve_tenant(phone_number_id=None):
+    """
+    Resolve tenant_id from phone_number_id via active WhatsApp Configuration.
+    Does not use frappe.session.user, User Business Membership, or n8n business_id.
+    Never defaults tenant_id to "heshly" and never returns secrets.
+    """
+    if phone_number_id is None:
+        return {"success": False, "message": "phone_number_id is required"}
+    if isinstance(phone_number_id, dict):
+        phone_number_id = phone_number_id.get("phone_number_id") or phone_number_id.get("phoneNumberId") or phone_number_id.get("phone_numberId") or ""
+    phone_number_id = str(phone_number_id).strip() if phone_number_id is not None else ""
+    if not phone_number_id:
+        return {"success": False, "message": "phone_number_id is required"}
+
+    try:
+        config = None
+        # Repository already filters active=1
+        try:
+            config = WhatsAppConfigurationRepository.get_by_phone_number_id(phone_number_id)
+        except TypeError:
+            repo = WhatsAppConfigurationRepository()
+            config = repo.get_by_phone_number_id(phone_number_id)
+        except AttributeError:
+            repo = WhatsAppConfigurationRepository()
+            config = repo.get_by_phone_number_id(phone_number_id)
+
+        if not config:
+            return {
+                "success": False,
+                "message": f"No active WhatsApp configuration found for phone_number_id: {phone_number_id}",
+                "phone_number_id": phone_number_id,
+            }
+
+        tenant_id = None
+        if isinstance(config, dict):
+            tenant_id = config.get("tenant_id") or config.get("custom_heshly_tenant_id") or config.get("tenantId")
+        else:
+            tenant_id = getattr(config, "tenant_id", None) or getattr(config, "custom_heshly_tenant_id", None) or getattr(config, "tenantId", None)
+
+        if tenant_id is not None:
+            tenant_id = str(tenant_id).strip()
+        if not tenant_id or tenant_id == "heshly":
+            return {
+                "success": False,
+                "message": f"No active WhatsApp configuration found for phone_number_id: {phone_number_id}",
+                "phone_number_id": phone_number_id,
+            }
+
+        canonical_phone_id = phone_number_id
+        if isinstance(config, dict):
+            canonical_phone_id = config.get("phone_number_id") or config.get("phoneNumberId") or phone_number_id
+        else:
+            canonical_phone_id = getattr(config, "phone_number_id", None) or getattr(config, "phoneNumberId", None) or phone_number_id
+        canonical_phone_id = str(canonical_phone_id).strip() if canonical_phone_id else phone_number_id
+
+        return {
+            "success": True,
+            "tenant_id": tenant_id,
+            "phone_number_id": canonical_phone_id,
+        }
+    except Exception as e:
+        return {"success": False, "message": f"Failed to resolve tenant: {e}", "phone_number_id": phone_number_id}
