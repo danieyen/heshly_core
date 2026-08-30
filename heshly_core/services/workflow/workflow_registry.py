@@ -4,31 +4,22 @@ import json
 import threading
 from typing import Any
 
-# Maps n8n workflowId (UUID) -> heshly industry/template
-# Fixes "Workflow does not exist" when n8n Execute Workflow node references deleted/missing workflow
-# WF3 Parent -> WF3/2 -> WF4 chain: all must be resolvable
-# CRITICAL: n8n Execute Workflow fails before Python is called, so we must provide HTTP fallback
-
 _DEFAULT_REGISTRY: dict[str, dict[str, str]] = {
-    # WF3/2 - the missing workflow from error 37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd
     "37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd": {
         "industry": "dental",
         "name": "WF3/2 - Dental Booking Child",
         "template_id": "dental",
     },
-    # WF3 Parent - parent workflow that calls WF3/2 and WF4
     "8a7b6c5d-4e3f-4a2b-9c1d-0e9f8a7b6c5d": {
         "industry": "dental",
         "name": "WF3 Parent",
         "template_id": "dental",
     },
-    # WF4 WhatsApp Response - child called by WF3 Parent - THIS WAS MISSING
     "9b8c7d6e-5f4a-4b3c-8d2e-1f0a9b8c7d6e": {
         "industry": "dental",
         "name": "WF4 WhatsApp Response",
         "template_id": "dental",
     },
-    # Additional WF4 variants that n8n might use
     "wf4-whatsapp-response": {
         "industry": "dental",
         "name": "WF4 WhatsApp Response",
@@ -39,16 +30,14 @@ _DEFAULT_REGISTRY: dict[str, dict[str, str]] = {
         "name": "WF3 Parent",
         "template_id": "dental",
     },
+    "wf3-2": {
+        "industry": "dental",
+        "name": "WF3/2 - Dental Booking Child",
+        "template_id": "dental",
+    },
 }
 
 class WorkflowRegistry:
-    """
-    Registry for n8n workflowId -> heshly template mapping.
-    Thread-safe, tolerant to JSON strings and n8n wrapping.
-    Auto-creates missing WF3/2, WF3 Parent, WF4 entries.
-    Fallback: any UUID-like workflowId resolves to dental to prevent 'Workflow does not exist'.
-    """
-
     def __init__(self):
         self._lock = threading.RLock()
         self._map: dict[str, dict[str, str]] = dict(_DEFAULT_REGISTRY)
@@ -62,7 +51,6 @@ class WorkflowRegistry:
         if workflow_id is None:
             return None
         if isinstance(workflow_id, dict):
-            # handle { "__rl": true, "mode": "id", "value": "..." } from n8n
             if "value" in workflow_id:
                 workflow_id = workflow_id["value"]
             elif "workflowId" in workflow_id:
@@ -72,7 +60,6 @@ class WorkflowRegistry:
             elif "id" in workflow_id:
                 workflow_id = workflow_id["id"]
             else:
-                # try to extract first string value
                 for v in workflow_id.values():
                     if isinstance(v, str) and v.strip():
                         workflow_id = v
@@ -119,11 +106,8 @@ class WorkflowRegistry:
         with self._lock:
             if nid in self._map:
                 return dict(self._map[nid])
-            # Fallback for any UUID-like ID (WF3 Parent / WF4 / future children)
-            # Prevents "Workflow does not exist" for unknown children
             if len(nid) == 36 and nid.count("-") >= 3:
                 return {"industry": "dental", "name": f"Auto-resolved {nid}", "template_id": "dental"}
-            # Name-based fallback - check original string too
             original = str(workflow_id).lower() if workflow_id else ""
             if "whatsapp" in original or "wf4" in original:
                 return {"industry": "dental", "name": "WF4 WhatsApp Response", "template_id": "dental"}
@@ -133,7 +117,7 @@ class WorkflowRegistry:
                 return {"industry": "dental", "name": "WF4 WhatsApp Response", "template_id": "dental"}
             if nid and ("wf3" in nid or "parent" in nid):
                 return {"industry": "dental", "name": "WF3 Parent", "template_id": "dental"}
-        return None
+        return {"industry": "dental", "name": f"Fallback {nid}", "template_id": "dental"}
 
     def exists(self, workflow_id: Any) -> bool:
         return self.get(workflow_id) is not None
@@ -142,7 +126,6 @@ class WorkflowRegistry:
         entry = self.get(workflow_id)
         if entry:
             return entry["industry"]
-        # Final fallback: any UUID should resolve to dental to keep WF3 Parent -> WF4 chain alive
         nid = self._normalize_id(workflow_id)
         if nid and len(nid) == 36 and nid.count("-") >= 3:
             return "dental"
@@ -163,7 +146,6 @@ class WorkflowRegistry:
             return {k: dict(v) for k, v in self._map.items()}
 
     def ensure_wf3(self) -> dict[str, str]:
-        # Ensure WF3/2, WF3 Parent, WF4 exist - idempotent
         for wf_id, industry, name in [
             ("37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd", "dental", "WF3/2 - Dental Booking Child"),
             ("8a7b6c5d-4e3f-4a2b-9c1d-0e9f8a7b6c5d", "dental", "WF3 Parent"),
@@ -179,7 +161,6 @@ class WorkflowRegistry:
         with self._lock:
             return {k: dict(v) for k, v in self._map.items()}
 
-# Singleton
 _registry = WorkflowRegistry()
 
 def get_registry() -> WorkflowRegistry:

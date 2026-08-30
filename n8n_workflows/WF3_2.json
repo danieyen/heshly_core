@@ -24,7 +24,7 @@
           "parameters": [
             {
               "name": "tenant_id",
-              "value": "={{ $json.tenant_id || $json.tenantId || $json.body.tenant_id || 'demo_tenant' }}"
+              "value": "={{ $json.tenant_id || $json.tenantId || $json.body.tenant_id || $json.body.tenantId || 'demo_tenant' }}"
             },
             {
               "name": "workflowId",
@@ -59,7 +59,7 @@
           "parameters": [
             {
               "name": "tenant_id",
-              "value": "={{ $json.tenant_id || $('HTTP Request — Execute Heshly Workflow').item.json.tenant_id || 'demo_tenant' }}"
+              "value": "={{ $json.tenant_id || $('HTTP Request — Execute Heshly Workflow').item.json.tenant_id || $json.tenantId || 'demo_tenant' }}"
             },
             {
               "name": "service",
@@ -75,7 +75,7 @@
             },
             {
               "name": "customer_id",
-              "value": "={{ $json.customer_id || $json.phone_number || '' }}"
+              "value": "={{ $json.customer_id || $json.phone_number || 'guest' }}"
             }
           ]
         },
