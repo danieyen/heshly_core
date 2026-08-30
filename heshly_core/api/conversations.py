@@ -499,7 +499,7 @@ def get(conversation_id=None, phone_number=None, phone_number_id=None, tenant_id
         except Exception:
             pass
 
-    manager = ConversationManager(tenant_context=tenant_context) if tenant_id else ConversationManager()
+    manager = ConversationManager(tenant_id=tenant_id) if tenant_id else ConversationManager()
 
     # 1) Try direct conversation_id lookup
     if conversation_id:
@@ -510,7 +510,7 @@ def get(conversation_id=None, phone_number=None, phone_number_id=None, tenant_id
                 if conv:
                     d = _to_dict(conv) or {}
                     # normalize messages/history
-                    messages = d.get("messages") or d.get("history") or d.get("conversation_history") or []
+                    messages = d.get("messages") or d.get("history") or d.get("conversation_history") or d.get("turns") or []
                     return {
                         "success": True,
                         "conversation": d,
@@ -543,7 +543,7 @@ def get(conversation_id=None, phone_number=None, phone_number_id=None, tenant_id
             if conv:
                 d = _to_dict(conv)
                 if d is not None:
-                    messages = d.get("messages") or d.get("history") or d.get("conversation_history") or []
+                    messages = d.get("messages") or d.get("history") or d.get("conversation_history") or d.get("turns") or []
                     return {
                         "success": True,
                         "conversation": d,
@@ -614,7 +614,8 @@ def create(**kwargs):
             TenantContext().set(str(tenant_id).strip())
         except Exception:
             pass
-    api = ConversationAPI()
+    manager = ConversationManager(tenant_id=str(tenant_id).strip()) if tenant_id else ConversationManager()
+    api = ConversationAPI(manager=manager)
     return api.create(data)
 
 
@@ -627,7 +628,8 @@ def add_message(**kwargs):
             TenantContext().set(str(tenant_id).strip())
         except Exception:
             pass
-    api = ConversationAPI()
+    manager = ConversationManager(tenant_id=str(tenant_id).strip()) if tenant_id else ConversationManager()
+    api = ConversationAPI(manager=manager)
     return api.add_message(data)
 
 

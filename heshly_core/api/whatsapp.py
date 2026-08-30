@@ -244,7 +244,7 @@ class WhatsAppAPI:
         }
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def resolve_tenant(phone_number_id=None):
     if not phone_number_id or not str(phone_number_id).strip():
         return {"success": False, "message": "phone_number_id is required"}
