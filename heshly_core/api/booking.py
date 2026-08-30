@@ -17,6 +17,7 @@ except ImportError:  # pragma: no cover
     class _MockFrappe:
         whitelist = _MockWhitelist()
         request = None
+        local = None
     frappe = _MockFrappe()  # type: ignore
 
 try:
