@@ -12,16 +12,20 @@
     "bodyParameters": {
       "parameters": [
         {
+          "name": "conversation_id",
+          "value": "={{ $(\"Build CRM Context\").first().json.conversation_id }}"
+        },
+        {
           "name": "phone_number",
-          "value": "={{ $json.phone_number }}"
+          "value": "={{ $(\"Build CRM Context\").first().json.phone_number }}"
         },
         {
           "name": "tenant_id",
-          "value": "={{ $json.tenant_id }}"
+          "value": "={{ $(\"Build CRM Context\").first().json.tenant_id }}"
         },
         {
           "name": "phone_number_id",
-          "value": "={{ $json.phone_number_id }}"
+          "value": "={{ $(\"Build CRM Context\").first().json.phone_number_id }}"
         }
       ]
     },
@@ -29,6 +33,6 @@
       "bodyContentType": "json"
     }
   },
-  "notes": "Fixed: Uses phone_number/phone_number_id/tenant_id from Normalize Payload for new contacts where conversation_id does not exist yet. Previously sent conversation_id which is invalid for new WhatsApp contacts. tenant_id=heshly is valid production data.",
+  "notes": "Fixed: Keeps conversation_id and adds phone_number/phone_number_id/tenant_id from Build CRM Context. For new contacts conversation_id does not exist yet so phone_number is used as fallback. tenant_id=heshly is valid production data.",
   "notesInFlow": true
 }
