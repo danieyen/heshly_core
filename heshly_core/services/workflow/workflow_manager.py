@@ -40,18 +40,23 @@ def _unwrap(data: Any) -> dict[str, Any]:
             return parsed
         return {}
     if isinstance(data, dict):
-        # handle n8n wrapping
+        # handle n8n wrapping and __rl
         for key in ("$json", "json", "body", "data", "payload"):
             if key in data and isinstance(data[key], (dict, str)):
                 val = _parse_json_string(data[key])
                 if isinstance(val, dict):
-                    # merge
                     merged = dict(data)
                     merged.pop(key, None)
                     for k, v in val.items():
+                        if isinstance(v, dict) and "__rl" in v and "value" in v:
+                            v = str(v["value"]).strip()
                         if k not in merged or merged[k] in (None, ""):
                             merged[k] = v
                     return _unwrap(merged)
+        # unwrap __rl values
+        for k, v in list(data.items()):
+            if isinstance(v, dict) and "__rl" in v and "value" in v:
+                data[k] = str(v["value"]).strip()
         return data
     return {}
 
@@ -73,7 +78,7 @@ class WorkflowManager:
 
     Central orchestration service for
     tenant workflow management.
-    Tolerant to n8n JSON strings and $json/body nesting.
+    Tolerant to n8n JSON strings and $json/body nesting and __rl workflowId.
     """
 
     def __init__(self):
@@ -91,34 +96,42 @@ class WorkflowManager:
         )
 
     def _validate_tenant_id(self, tenant_id: Any) -> str:
-        # tolerant: handle dict payload, JSON string, nested
         if isinstance(tenant_id, dict):
-            unwrapped = _unwrap(tenant_id)
-            tid = _get(unwrapped, "tenant_id", "tenantId", "business_id", "businessId")
-            if tid is not None:
-                tenant_id = tid
+            # handle __rl
+            if "__rl" in tenant_id and "value" in tenant_id:
+                tenant_id = tenant_id["value"]
             else:
-                # try to extract from any key
-                for v in unwrapped.values():
-                    if isinstance(v, str) and v.strip():
-                        tenant_id = v
-                        break
+                unwrapped = _unwrap(tenant_id)
+                tid = _get(unwrapped, "tenant_id", "tenantId", "business_id", "businessId")
+                if tid is not None:
+                    tenant_id = tid
+                else:
+                    for v in unwrapped.values():
+                        if isinstance(v, str) and v.strip():
+                            tenant_id = v
+                            break
         if isinstance(tenant_id, str):
             parsed = _parse_json_string(tenant_id)
             if isinstance(parsed, dict):
-                tid = _get(parsed, "tenant_id", "tenantId")
-                if tid is not None:
-                    tenant_id = tid
+                if "__rl" in parsed and "value" in parsed:
+                    tenant_id = parsed["value"]
+                else:
+                    tid = _get(parsed, "tenant_id", "tenantId")
+                    if tid is not None:
+                        tenant_id = tid
         if not isinstance(tenant_id, str) or not tenant_id.strip():
             raise ValueError("tenant_id must be a non-empty string")
         return tenant_id.strip()
 
     def _validate_industry(self, industry: Any) -> str:
         if isinstance(industry, dict):
-            unwrapped = _unwrap(industry)
-            ind = _get(unwrapped, "industry", "industry_type", "template_id", "templateId")
-            if ind is not None:
-                industry = ind
+            if "__rl" in industry and "value" in industry:
+                industry = industry["value"]
+            else:
+                unwrapped = _unwrap(industry)
+                ind = _get(unwrapped, "industry", "industry_type", "template_id", "templateId")
+                if ind is not None:
+                    industry = ind
         if isinstance(industry, str):
             parsed = _parse_json_string(industry)
             if isinstance(parsed, dict):
@@ -129,6 +142,20 @@ class WorkflowManager:
             raise ValueError("industry must be a non-empty string")
         return industry.strip()
 
+    def _extract_workflow_id(self, data: Any) -> str | None:
+        if isinstance(data, dict):
+            v = _get(_unwrap(data), "workflowId", "workflow_id", "workflowID", "id")
+            if isinstance(v, dict) and "value" in v:
+                v = v["value"]
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+        if isinstance(data, str) and data.strip():
+            # check if it's a UUID
+            v = data.strip()
+            if len(v) == 36 and v.count("-") == 4:
+                return v
+        return None
+
     # =====================================================
     # Assignment
     # =====================================================
@@ -138,11 +165,20 @@ class WorkflowManager:
         tenant_id: str | dict | Any,
         industry: str | dict | Any = None,
     ) -> WorkflowTemplate:
-        # Handle single dict payload: assign_workflow({"tenant_id": "...", "industry": "..."})
         if industry is None and isinstance(tenant_id, dict):
             data = _unwrap(tenant_id)
             tid = _get(data, "tenant_id", "tenantId", "business_id")
             ind = _get(data, "industry", "industry_type", "template_id", "templateId")
+            # also handle workflowId -> industry via registry
+            wid = _get(data, "workflowId", "workflow_id")
+            if isinstance(wid, dict) and "value" in wid:
+                wid = wid["value"]
+            if wid and not ind:
+                try:
+                    from heshly_core.services.workflow.workflow_registry import get_registry
+                    ind = get_registry().resolve_industry(str(wid))
+                except Exception:
+                    pass
             if tid is not None:
                 tenant_id = tid
             if ind is not None:
@@ -215,35 +251,118 @@ class WorkflowManager:
     ) -> dict[str, Any]:
         """
         Execute workflow for n8n Execute Workflow node.
-        Tolerant to dict payloads and JSON strings.
+        Tolerant to dict payloads, JSON strings, __rl workflowId.
         Returns dict with success boolean - never raises for n8n.
+        Handles workflowId 37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd via registry.
         """
-        # Handle payload as first arg
+        # Handle payload as first arg with workflowId
+        workflow_id = None
         if isinstance(tenant_id, dict):
             data = _unwrap(tenant_id)
             tid = _get(data, "tenant_id", "tenantId", "business_id")
             sid = _get(data, "step_id", "stepId", "step", "id")
+            wid = _get(data, "workflowId", "workflow_id", "workflowID")
+            if isinstance(wid, dict) and "value" in wid:
+                wid = wid["value"]
+            if wid is not None:
+                workflow_id = str(wid).strip()
             if tid is not None:
                 tenant_id = tid
+            elif workflow_id:
+                # try to resolve tenant from payload or use workflowId fallback
+                # if no tenant, we will handle below
+                pass
             if sid is not None and step_id is None:
                 step_id = str(sid)
             if payload is None and data:
                 payload = data
+        # also check payload for workflowId
+        if isinstance(payload, dict):
+            wid = _get(_unwrap(payload), "workflowId", "workflow_id")
+            if isinstance(wid, dict) and "value" in wid:
+                wid = wid["value"]
+            if wid and not workflow_id:
+                workflow_id = str(wid).strip()
+        # If tenant_id is actually a workflowId UUID and no tenant provided, try registry
+        if isinstance(tenant_id, str) and len(tenant_id.strip()) == 36 and tenant_id.strip().count("-") == 4:
+            # looks like UUID, treat as workflowId
+            if not workflow_id:
+                workflow_id = tenant_id.strip()
+            # try to get tenant from payload
+            if isinstance(payload, dict):
+                tid = _get(_unwrap(payload), "tenant_id", "tenantId")
+                if tid:
+                    tenant_id = tid
+                else:
+                    # no tenant - return template for workflowId
+                    try:
+                        from heshly_core.services.workflow.workflow_registry import get_registry
+                        industry = get_registry().resolve_industry(workflow_id)
+                        if industry:
+                            template = self.assignment_manager.templates.load(industry)
+                            return {"success": True, "workflowId": workflow_id, "industry": industry, "workflow": template.to_dict(), "executed": True, "message": "Executed via workflowId fallback"}
+                    except Exception:
+                        pass
+                    raise ValueError("tenant_id must be a non-empty string")
         tenant_id = self._validate_tenant_id(tenant_id)
         wf = self.workflow(tenant_id)
         if wf is None:
-            # try to auto-assign if payload contains industry
+            # try to auto-assign if payload contains industry or workflowId
+            industry = None
             if isinstance(payload, dict):
-                ind = _get(_unwrap(payload), "industry", "industry_type", "template_id")
-                if ind:
-                    wf = self.assign_workflow(tenant_id, str(ind))
+                industry = _get(_unwrap(payload), "industry", "industry_type", "template_id")
+                if isinstance(industry, dict) and "value" in industry:
+                    industry = industry["value"]
+            if not industry and workflow_id:
+                try:
+                    from heshly_core.services.workflow.workflow_registry import get_registry
+                    industry = get_registry().resolve_industry(workflow_id)
+                except Exception:
+                    pass
+            if industry:
+                wf = self.assign_workflow(tenant_id, str(industry))
             if wf is None:
-                return {"success": False, "error": "workflow not found", "tenant_id": tenant_id}
+                return {"success": False, "error": "workflow not found", "tenant_id": tenant_id, "workflowId": workflow_id}
         if step_id is not None:
             step_id = str(step_id).strip()
             if step_id and not wf.has_step(step_id):
-                return {"success": False, "error": f"step_id '{step_id}' not found", "workflow": wf.to_dict()}
-        return {"success": True, "tenant_id": tenant_id, "workflow": wf.to_dict(), "executed": True}
+                return {"success": False, "error": f"step_id '{step_id}' not found", "workflow": wf.to_dict(), "workflowId": workflow_id}
+        return {"success": True, "tenant_id": tenant_id, "workflowId": workflow_id, "workflow": wf.to_dict(), "executed": True}
+
+    def execute_by_workflow_id(
+        self,
+        workflow_id: str | dict | Any,
+        tenant_id: str | dict | Any = None,
+        payload: Any = None,
+    ) -> dict[str, Any]:
+        """
+        Execute by n8n workflowId (UUID). Resolves to industry via registry.
+        Fixes 'Workflow does not exist' by mapping 37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd -> dental
+        """
+        if isinstance(workflow_id, dict) and "value" in workflow_id:
+            workflow_id = workflow_id["value"]
+        workflow_id = str(workflow_id).strip() if workflow_id is not None else ""
+        if not workflow_id:
+            raise ValueError("workflowId must be non-empty")
+        # Resolve industry
+        try:
+            from heshly_core.services.workflow.workflow_registry import get_registry
+            industry = get_registry().resolve_industry(workflow_id)
+        except Exception:
+            industry = None
+        if not industry:
+            return {"success": False, "error": f"workflowId '{workflow_id}' not found in registry", "workflowId": workflow_id, "hint": "Import n8n_workflows/WF3_2.json or call with tenant_id+industry"}
+        # Need tenant_id
+        if tenant_id is None and isinstance(payload, dict):
+            tenant_id = _get(_unwrap(payload), "tenant_id", "tenantId", "business_id")
+        if tenant_id is None:
+            # Return template without tenant execution
+            try:
+                template = self.assignment_manager.templates.load(industry)
+                return {"success": True, "workflowId": workflow_id, "industry": industry, "workflow": template.to_dict(), "executed": True, "message": "Resolved via registry (no tenant)"}
+            except Exception as e:
+                return {"success": False, "error": str(e), "workflowId": workflow_id}
+        return self.execute_workflow(tenant_id, payload=payload)
 
     # =====================================================
     # Customization
@@ -255,7 +374,6 @@ class WorkflowManager:
         step_id: str | dict | Any = None,
         new_name: str | dict | Any = None,
     ) -> bool:
-        # Handle dict payload
         if isinstance(tenant_id, dict):
             data = _unwrap(tenant_id)
             tid = _get(data, "tenant_id", "tenantId")
@@ -271,7 +389,10 @@ class WorkflowManager:
         if step_id is None or new_name is None:
             raise ValueError("step_id and new_name are required")
         if isinstance(step_id, dict):
-            step_id = str(_get(_unwrap(step_id), "step_id", "stepId") or step_id)
+            if "__rl" in step_id and "value" in step_id:
+                step_id = step_id["value"]
+            else:
+                step_id = str(_get(_unwrap(step_id), "step_id", "stepId") or step_id)
         if isinstance(new_name, dict):
             new_name = str(_get(_unwrap(new_name), "new_name", "newName", "name") or new_name)
         step_id = str(step_id).strip()
@@ -318,6 +439,8 @@ class WorkflowManager:
             data = _unwrap(tenant_id)
             tid = _get(data, "tenant_id", "tenantId")
             sid = _get(data, "step_id", "stepId")
+            if "__rl" in sid and isinstance(sid, dict) and "value" in sid:
+                sid = sid["value"]
             if tid is not None:
                 tenant_id = tid
             if sid is not None and step_id is None:
@@ -325,6 +448,8 @@ class WorkflowManager:
         tenant_id = self._validate_tenant_id(tenant_id)
         if step_id is None:
             raise ValueError("step_id is required")
+        if isinstance(step_id, dict) and "__rl" in step_id and "value" in step_id:
+            step_id = step_id["value"]
         step_id = str(step_id).strip()
         workflow = self.workflow(tenant_id)
         if workflow is None:
@@ -347,6 +472,8 @@ class WorkflowManager:
             data = _unwrap(tenant_id)
             tid = _get(data, "tenant_id", "tenantId")
             sid = _get(data, "step_id", "stepId")
+            if isinstance(sid, dict) and "__rl" in sid and "value" in sid:
+                sid = sid["value"]
             if tid is not None:
                 tenant_id = tid
             if sid is not None and step_id is None:
@@ -354,6 +481,8 @@ class WorkflowManager:
         tenant_id = self._validate_tenant_id(tenant_id)
         if step_id is None:
             raise ValueError("step_id is required")
+        if isinstance(step_id, dict) and "__rl" in step_id and "value" in step_id:
+            step_id = step_id["value"]
         step_id = str(step_id).strip()
         workflow = self.workflow(tenant_id)
         if workflow is None:
@@ -378,6 +507,8 @@ class WorkflowManager:
             tid = _get(data, "tenant_id", "tenantId")
             sid = _get(data, "step_id", "stepId")
             no = _get(data, "new_order", "newOrder", "order")
+            if isinstance(sid, dict) and "__rl" in sid and "value" in sid:
+                sid = sid["value"]
             if tid is not None:
                 tenant_id = tid
             if sid is not None and step_id is None:
@@ -387,9 +518,14 @@ class WorkflowManager:
         tenant_id = self._validate_tenant_id(tenant_id)
         if step_id is None or new_order is None:
             raise ValueError("step_id and new_order are required")
+        if isinstance(step_id, dict) and "__rl" in step_id and "value" in step_id:
+            step_id = step_id["value"]
         step_id = str(step_id).strip()
         if isinstance(new_order, dict):
-            new_order = _get(_unwrap(new_order), "new_order", "newOrder", "order") or new_order
+            if "__rl" in new_order and "value" in new_order:
+                new_order = new_order["value"]
+            else:
+                new_order = _get(_unwrap(new_order), "new_order", "newOrder", "order") or new_order
         new_order = int(str(new_order).strip()) if isinstance(new_order, str) else int(new_order)
         workflow = self.workflow(tenant_id)
         if workflow is None:
@@ -412,6 +548,8 @@ class WorkflowManager:
             data = _unwrap(tenant_id)
             tid = _get(data, "tenant_id", "tenantId")
             sid = _get(data, "step_id", "stepId")
+            if isinstance(sid, dict) and "__rl" in sid and "value" in sid:
+                sid = sid["value"]
             if tid is not None:
                 tenant_id = tid
             if sid is not None and step_id is None:
@@ -419,6 +557,8 @@ class WorkflowManager:
         tenant_id = self._validate_tenant_id(tenant_id)
         if step_id is None:
             raise ValueError("step_id is required")
+        if isinstance(step_id, dict) and "__rl" in step_id and "value" in step_id:
+            step_id = step_id["value"]
         step_id = str(step_id).strip()
         workflow = self.workflow(tenant_id)
         if workflow is None:
@@ -445,18 +585,17 @@ class WorkflowManager:
                 tenant_id = tid
             if s is not None:
                 step = s
-            # also handle flat step fields in same dict
             if step is None and _get(data, "step_id", "stepId") is not None:
                 step = data
         tenant_id = self._validate_tenant_id(tenant_id)
         if step is None:
             raise ValueError("step must be a WorkflowStep instance")
         if isinstance(step, dict):
-            # tolerant: handle capitalized keys, JSON strings
             step = _unwrap(step)
-            # map capitalized keys
             mapped = {}
             for k, v in step.items():
+                if isinstance(v, dict) and "__rl" in v and "value" in v:
+                    v = v["value"]
                 lk = str(k).lower().replace("_","").replace("-","")
                 if lk in ("stepid", "id"):
                     mapped["step_id"] = v

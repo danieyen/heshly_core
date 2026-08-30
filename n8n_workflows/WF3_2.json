@@ -1,0 +1,122 @@
+{
+  "name": "WF3/2 - Dental Booking Child (FIX for 37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {}
+          ]
+        }
+      },
+      "id": "start-node",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "webhookId": "37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.HESHLY_API_URL || 'http://frappe:8000' }}/api/method/heshly_core.api.workflow.execute_workflow",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "tenant_id",
+              "value": "={{ $json.tenant_id || $json.tenantId || $json.body.tenant_id || 'demo_tenant' }}"
+            },
+            {
+              "name": "workflowId",
+              "value": "37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd"
+            },
+            {
+              "name": "industry",
+              "value": "={{ $json.industry || 'dental' }}"
+            },
+            {
+              "name": "step_id",
+              "value": "={{ $json.step_id || $json.stepId || '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-workflow",
+      "name": "HTTP Request — Execute Heshly Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.HESHLY_API_URL || 'http://frappe:8000' }}/api/method/heshly_core.api.booking.book_appointment",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "tenant_id",
+              "value": "={{ $json.tenant_id || $('HTTP Request — Execute Heshly Workflow').item.json.tenant_id || 'demo_tenant' }}"
+            },
+            {
+              "name": "service",
+              "value": "={{ $json.service || $json.service_name || 'dental' }}"
+            },
+            {
+              "name": "date",
+              "value": "={{ $json.date || $json.appointment_date || '' }}"
+            },
+            {
+              "name": "time",
+              "value": "={{ $json.time || $json.appointment_time || '' }}"
+            },
+            {
+              "name": "customer_id",
+              "value": "={{ $json.customer_id || $json.phone_number || '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-booking",
+      "name": "HTTP Request — Create Appointment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request — Execute Heshly Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request — Execute Heshly Workflow": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request — Create Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "fix-wf3-2-37bdbe49"
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd",
+  "id": "37bdbe49-2f7c-44ff-9132-4b2c9e3d33fd"
+}
