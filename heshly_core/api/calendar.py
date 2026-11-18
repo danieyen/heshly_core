@@ -112,6 +112,7 @@ class CalendarAPI:
         Returns {success: bool, appointment_id, status, message}
         """
         from heshly_core.api.booking import BookingAPI
+
         api = BookingAPI(tenant_context=self.tenant_context)
         return api.book(payload)
 

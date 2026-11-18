@@ -50,6 +50,7 @@ class PipelineManager:
         return Opportunity(
             id="OPP-001",
             lead_id=lead.id,
+            tenant_id="heshly",
             stage="Qualified",
         )
 

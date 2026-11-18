@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from heshly_core.services.tenant.tenant_context import (
-    TenantContextManager,
+    TenantContext,
 )
 
 
@@ -17,7 +17,7 @@ class QueryIsolation:
 
     def __init__(self):
 
-        self.context = TenantContextManager()
+        self.context = TenantContext()
 
     # =====================================================
     # Query Scope
@@ -32,7 +32,7 @@ class QueryIsolation:
 
         filters = dict(query or {})
 
-        filters["tenant_id"] = tenant.tenant_id
+        filters["tenant_id"] = tenant
 
         return filters
 
@@ -54,7 +54,7 @@ class QueryIsolation:
         return (
             query.get("tenant_id")
             ==
-            tenant.tenant_id
+            tenant
         )
 
     # =====================================================

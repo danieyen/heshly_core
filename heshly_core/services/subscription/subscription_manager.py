@@ -5,6 +5,10 @@ from heshly_core.models.subscription import (
     SubscriptionPlan,
 )
 
+from heshly_core.repositories.frappe_subscription_repository import (
+    FrappeSubscriptionRepository,
+)
+
 from heshly_core.services.subscription.feature_entitlements import (
     FeatureEntitlements,
 )
@@ -14,23 +18,15 @@ class SubscriptionManager:
     """
     Subscription Manager.
 
-    Central service responsible for
-    managing SaaS subscriptions.
-
-    Future:
-        • Billing integration
-        • Stripe
-        • M-Pesa
-        • PayPal
-        • Automatic renewals
+    Central service responsible for managing
+    Heshly SaaS subscriptions.
     """
 
     def __init__(self):
 
-        self._subscriptions: dict[
-            str,
-            Subscription,
-        ] = {}
+        self.repository = (
+            FrappeSubscriptionRepository()
+        )
 
     # =====================================================
     # CRUD
@@ -41,37 +37,41 @@ class SubscriptionManager:
         subscription: Subscription,
     ) -> Subscription:
 
-        self._subscriptions[
-            subscription.subscription_id
-        ] = subscription
-
-        return subscription
+        return self.repository.save(
+            subscription
+        )
 
     def get(
         self,
         subscription_id: str,
     ) -> Subscription | None:
 
-        return self._subscriptions.get(
+        return self.repository.get(
             subscription_id
+        )
+
+    def get_by_business(
+        self,
+        business_id: str,
+    ) -> Subscription | None:
+
+        return self.repository.get_by_business(
+            business_id
         )
 
     def all(
         self,
     ) -> list[Subscription]:
 
-        return list(
-            self._subscriptions.values()
-        )
+        return self.repository.all()
 
     def delete(
         self,
         subscription_id: str,
     ) -> None:
 
-        self._subscriptions.pop(
-            subscription_id,
-            None,
+        self.repository.delete(
+            subscription_id
         )
 
     # =====================================================
@@ -89,6 +89,10 @@ class SubscriptionManager:
 
         subscription.activate()
 
+        self.repository.save(
+            subscription,
+        )
+
         return subscription
 
     def suspend(
@@ -102,6 +106,10 @@ class SubscriptionManager:
 
         subscription.suspend()
 
+        self.repository.save(
+            subscription,
+        )
+
         return subscription
 
     def cancel(
@@ -114,6 +122,10 @@ class SubscriptionManager:
         )
 
         subscription.cancel()
+
+        self.repository.save(
+            subscription,
+        )
 
         return subscription
 
@@ -132,6 +144,10 @@ class SubscriptionManager:
         )
 
         subscription.plan = plan
+
+        self.repository.save(
+            subscription,
+        )
 
         return subscription
 
@@ -168,33 +184,47 @@ class SubscriptionManager:
         )
 
         if subscription is None:
+
             raise ValueError(
                 f"Subscription '{subscription_id}' not found."
             )
 
         return subscription
 
-    def clear(self):
+    def clear(
+        self,
+    ):
 
-        self._subscriptions.clear()
+        self.repository.clear()
 
-    def summary(self) -> dict:
+    def summary(
+        self,
+    ) -> dict:
+
+        subscriptions = self.repository.all()
 
         return {
+
             "subscriptions": len(
-                self._subscriptions
+                subscriptions
             ),
+
             "active": sum(
                 1
-                for subscription
-                in self._subscriptions.values()
+                for subscription in subscriptions
                 if subscription.is_active
             ),
         }
 
-    def health(self) -> dict:
+    def health(
+        self,
+    ) -> dict:
 
         return {
+
             "service": "subscription_manager",
+
             "status": "healthy",
+
+            "repository": "frappe",
         }

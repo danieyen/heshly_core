@@ -3,11 +3,10 @@ from heshly_core.models.intent import Intent, IntentResult
 
 class IntentClassifier:
     """
-    Rule-based intent classifier for the Heshly MVP.
+    Deterministic intent classifier for the Heshly MVP.
 
-    This implementation is intentionally deterministic.
-    Later versions will delegate classification to an LLM
-    while preserving the same interface.
+    Recognizes explicit booking language and natural
+    service-based booking requests.
     """
 
     KEYWORDS = {
@@ -16,6 +15,17 @@ class IntentClassifier:
             "appointment",
             "schedule",
             "reserve",
+            "make an appointment",
+            "see the dentist",
+            "see a dentist",
+            "want a dental",
+            "need a dental",
+            "like a dental",
+            "dental cleaning",
+            "dental checkup",
+            "dental consultation",
+            "dental whitening",
+            "dental filling",
         ],
         Intent.RESCHEDULE_APPOINTMENT: [
             "reschedule",
@@ -31,12 +41,14 @@ class IntentClassifier:
             "cost",
             "fee",
             "charges",
+            "how much",
         ],
         Intent.BUSINESS_HOURS: [
             "hours",
             "open",
             "closing",
             "working hours",
+            "when are you open",
         ],
         Intent.LOCATION: [
             "where",

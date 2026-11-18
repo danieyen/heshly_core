@@ -43,9 +43,6 @@ class BillingCycle(str, Enum):
 
 @dataclass(slots=True)
 class SubscriptionPlan:
-    """
-    SaaS subscription plan.
-    """
 
     plan_id: str
 
@@ -76,13 +73,12 @@ class SubscriptionPlan:
 
 @dataclass(slots=True)
 class Subscription:
-    """
-    Tenant subscription.
-    """
 
     subscription_id: str
 
     tenant_id: str
+
+    business_id: str
 
     plan: SubscriptionPlan
 
@@ -104,39 +100,53 @@ class Subscription:
 
     cancelled_at: datetime | None = None
 
+    grace_period_until: datetime | None = None
+
+    auto_renew: bool = True
+
+    terminated_on: datetime | None = None
+
+    termination_reason: str | None = None
+
     # =================================================
     # Lifecycle
     # =================================================
 
     def activate(self):
-
         self.status = SubscriptionStatus.ACTIVE
 
-
     def suspend(self):
-
         self.status = SubscriptionStatus.SUSPENDED
 
-
     def cancel(self):
-
         self.status = SubscriptionStatus.CANCELLED
-
         self.cancelled_at = datetime.now(UTC)
 
-
     def expire(self):
-
         self.status = SubscriptionStatus.EXPIRED
 
+    def terminate(
+        self,
+        reason: str = "Subscription expired",
+    ):
+        self.status = SubscriptionStatus.EXPIRED
+        self.terminated_on = datetime.now(UTC)
+        self.termination_reason = reason
 
     @property
-    def is_active(self) -> bool:
+    def is_active(self):
+        now = datetime.now(UTC)
 
-        return (
-            self.status
-            in (
-                SubscriptionStatus.ACTIVE,
-                SubscriptionStatus.TRIAL,
-            )
-        )
+        if self.status in (
+            SubscriptionStatus.ACTIVE,
+            SubscriptionStatus.TRIAL,
+        ):
+            return True
+
+        if self.status == SubscriptionStatus.PAST_DUE:
+            if self.grace_period_until is None:
+                return False
+
+            return now < self.grace_period_until
+
+        return False

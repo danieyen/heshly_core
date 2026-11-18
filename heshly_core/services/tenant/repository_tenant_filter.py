@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from heshly_core.services.tenant.tenant_context import (
-    TenantContextManager,
+    TenantContext,
 )
 
 
@@ -18,7 +18,7 @@ class RepositoryTenantFilter:
 
     def __init__(self):
 
-        self.context = TenantContextManager()
+        self.context = TenantContext()
 
     # =====================================================
     # Filtering
@@ -42,7 +42,7 @@ class RepositoryTenantFilter:
                 "tenant_id",
                 None,
             )
-            == tenant.tenant_id
+            == tenant
 
         ]
 
@@ -71,7 +71,7 @@ class RepositoryTenantFilter:
 
             ==
 
-            tenant.tenant_id
+            tenant
 
         )
 

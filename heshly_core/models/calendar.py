@@ -170,7 +170,9 @@ class CalendarConfiguration:
 
     timezone: str
 
-    business_name: str
+    tenant_id: str
+
+    business_name: str = ""
 
     settings: dict = field(
         default_factory=dict

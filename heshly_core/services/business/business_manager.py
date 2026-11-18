@@ -13,12 +13,8 @@ from heshly_core.models.business_settings import (
     BusinessSettings,
 )
 
-from heshly_core.repositories.business_repository import (
-    BusinessRepository,
-)
-
-from heshly_core.services.tenant.tenant_isolation import (
-    TenantIsolation,
+from heshly_core.repositories.frappe_business_repository import (
+    FrappeBusinessRepository,
 )
 
 
@@ -43,9 +39,7 @@ class BusinessManager:
 
     def __init__(self):
 
-        self.repository = BusinessRepository()
-
-        self.isolation = TenantIsolation()
+        self.repository = FrappeBusinessRepository()
 
 
 

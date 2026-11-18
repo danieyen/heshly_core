@@ -4,6 +4,10 @@ import uuid
 from datetime import datetime
 
 from heshly_core.models.crm import Lead, LeadStatus
+
+from heshly_core.repositories.repository_factory import (
+    repository_factory,
+)
 from heshly_core.services.crm.lead_validator import LeadValidator
 
 
@@ -17,7 +21,14 @@ class LeadCreator:
     Creates and validates Lead objects.
     """
 
-    def __init__(self):
+    def __init__(self, repository=None):
+
+        self.repository = (
+            repository
+            if repository is not None
+            else repository_factory.leads
+        )
+
         self.validator = LeadValidator()
 
     def create(
@@ -50,6 +61,8 @@ class LeadCreator:
             raise LeadCreationError(
                 f"Lead validation failed: {result.errors}"
             )
+
+        self.repository.save(lead)
 
         return lead
 

@@ -39,7 +39,7 @@ def run():
 
         lead_id="LEAD-001",
 
-        business_id="BIZ-001",
+        business_id="heshly",
 
         full_name="John Doe",
 
@@ -61,7 +61,21 @@ def run():
 
     assert repository_factory.leads.count() == 1
     assert repository_factory.leads.exists("LEAD-001")
-    assert repository_factory.leads.get("LEAD-001") == lead
+    stored_lead = repository_factory.leads.get("LEAD-001")
+
+    assert stored_lead is not None
+    assert stored_lead.lead_id == lead.lead_id
+    assert stored_lead.business_id == lead.business_id
+    assert stored_lead.full_name == lead.full_name
+    assert stored_lead.phone == lead.phone
+    assert stored_lead.email == lead.email
+    assert stored_lead.company == lead.company
+    assert stored_lead.source == lead.source
+    assert stored_lead.status == lead.status
+    assert stored_lead.score == lead.score
+    assert stored_lead.assigned_to == lead.assigned_to
+    assert stored_lead.created_at is not None
+    assert stored_lead.updated_at is not None
 
     print("✓ Lead Repository")
 
@@ -74,6 +88,7 @@ def run():
         opportunity_id="OPP-001",
 
         lead_id="LEAD-001",
+            tenant_id="heshly",
 
         title="Dental Cleaning",
 
@@ -115,7 +130,7 @@ def run():
 
         order=1,
 
-        probability=30,
+        probability=0.30,
 
     )
 
@@ -160,7 +175,7 @@ def run():
 
         follow_up_id="FU-001",
 
-        business_id="BIZ-001",
+        business_id="heshly",
 
         related_type="lead",
 

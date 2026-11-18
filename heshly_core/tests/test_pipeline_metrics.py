@@ -18,6 +18,7 @@ def run():
         Opportunity(
             opportunity_id="OPP-001",
             lead_id="LEAD-001",
+            tenant_id="heshly",
             title="Dental Treatment",
             expected_value=200000,
             probability=0.80,
@@ -28,6 +29,7 @@ def run():
         Opportunity(
             opportunity_id="OPP-002",
             lead_id="LEAD-002",
+            tenant_id="heshly",
             title="Website Project",
             expected_value=100000,
             probability=0.50,
@@ -38,6 +40,7 @@ def run():
         Opportunity(
             opportunity_id="OPP-003",
             lead_id="LEAD-003",
+            tenant_id="heshly",
             title="ERP Setup",
             expected_value=500000,
             probability=0.90,

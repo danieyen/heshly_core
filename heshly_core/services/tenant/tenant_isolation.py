@@ -1,14 +1,8 @@
 from __future__ import annotations
 
-
-from heshly_core.models.tenant import (
-    Tenant,
-)
-
 from heshly_core.services.tenant.tenant_context import (
-    TenantContextManager,
+    TenantContext,
 )
-
 
 
 class TenantIsolation:
@@ -32,33 +26,29 @@ class TenantIsolation:
     - Payments
     """
 
-
-
     def __init__(self):
-
-        self.context = TenantContextManager()
-
-
+        self.context = TenantContext()
 
     # =====================================================
     # Current Tenant Validation
     # =====================================================
 
-    def require_tenant(self) -> Tenant:
+    def require_tenant(self) -> str:
+        """
+        Return the canonical tenant_id for the
+        current execution context.
 
-        tenant = self.context.get()
+        Raises:
+            PermissionError: if no tenant context exists.
+        """
 
+        try:
+            return self.context.require()
 
-        if tenant is None:
-
+        except RuntimeError as exc:
             raise PermissionError(
                 "Tenant context required"
-            )
-
-
-        return tenant
-
-
+            ) from exc
 
     # =====================================================
     # Resource Ownership
@@ -68,10 +58,12 @@ class TenantIsolation:
         self,
         resource,
     ) -> bool:
+        """
+        Validate that a resource belongs to
+        the current tenant.
+        """
 
-
-        tenant = self.require_tenant()
-
+        tenant_id = self.require_tenant()
 
         resource_tenant_id = getattr(
             resource,
@@ -79,24 +71,17 @@ class TenantIsolation:
             None,
         )
 
-
         if resource_tenant_id is None:
-
             raise PermissionError(
                 "Resource has no tenant ownership"
             )
 
-
-        if resource_tenant_id != tenant.tenant_id:
-
+        if resource_tenant_id != tenant_id:
             raise PermissionError(
                 "Cross tenant access denied"
             )
 
-
         return True
-
-
 
     # =====================================================
     # Tenant Match
@@ -106,14 +91,14 @@ class TenantIsolation:
         self,
         tenant_id: str,
     ) -> bool:
+        """
+        Check whether the supplied tenant_id
+        matches the active tenant.
+        """
 
+        current_tenant_id = self.require_tenant()
 
-        tenant = self.require_tenant()
-
-
-        return tenant.tenant_id == tenant_id
-
-
+        return current_tenant_id == tenant_id
 
     # =====================================================
     # Access Check
@@ -123,31 +108,29 @@ class TenantIsolation:
         self,
         resource,
     ) -> bool:
-
+        """
+        Return True only when the resource belongs
+        to the current tenant.
+        """
 
         try:
-
-            return self.validate_owner(
-                resource
-            )
-
+            return self.validate_owner(resource)
 
         except PermissionError:
-
             return False
-
-
 
     # =====================================================
     # Health
     # =====================================================
 
-    def health(self):
+    def health(self) -> dict:
+        """
+        Return tenant isolation health information.
+        """
 
         return {
-
             "service": "tenant_isolation",
-
             "status": "healthy",
-
+            "has_context": self.context.has_context(),
+            "tenant": self.context.get(),
         }

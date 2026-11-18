@@ -91,6 +91,8 @@ class Opportunity:
     opportunity_id: str
     lead_id: str
 
+    tenant_id: str
+
     title: str
 
     expected_value: float = 0.0
@@ -261,3 +263,17 @@ class CRMAnalyticsSnapshot:
     pipeline_value: float = 0.0
 
     conversion_rate: float = 0.0
+@dataclass(slots=True)
+class WhatsAppActivity:
+    activity_id: str
+    business_id: str
+    related_type: str
+    related_id: str
+    message_id: str
+    direction: str
+    phone_number: str
+    message: str
+    status: str
+    logged_by: Optional[str] = None
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    tenant_id: Optional[str] = None

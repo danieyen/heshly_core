@@ -13,6 +13,14 @@ from heshly_core.services.calendar.calendar_manager import (
     CalendarManager,
 )
 
+from heshly_core.models.calendar_provider import (
+    ProviderConnection,
+)
+
+from heshly_core.services.calendar.providers.provider_integration import (
+    ProviderIntegration,
+)
+
 
 class CalendarIntegration:
     """
@@ -26,9 +34,12 @@ class CalendarIntegration:
 
     def __init__(
         self,
+        provider: ProviderIntegration | None = None,
     ) -> None:
 
-        self._manager = CalendarManager()
+        self._manager = CalendarManager(
+            provider=provider,
+        )
 
     @property
     def manager(
@@ -54,6 +65,14 @@ class CalendarIntegration:
             working_start=working_start,
 
             working_end=working_end,
+        )
+
+    def connect(
+        self,
+        connection: ProviderConnection,
+    ) -> bool:
+        return self._manager.provider.connect(
+            connection
         )
 
     def book(

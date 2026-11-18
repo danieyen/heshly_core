@@ -14,6 +14,10 @@ class WhatsAppConfiguration:
 
     tenant_id: str
 
+    # Heshly internal Business Account this WhatsApp number belongs to.
+    # This is distinct from Meta's business_account_id.
+    business_id: str = ""
+
     business_account_id: str = ""
 
     phone_number_id: str = ""
@@ -27,6 +31,10 @@ class WhatsAppConfiguration:
     webhook_url: str = ""
 
     language: str = "en"
+
+    api_version: str = "v23.0"
+
+    app_secret: str = ""
 
     webhook_enabled: bool = False
 

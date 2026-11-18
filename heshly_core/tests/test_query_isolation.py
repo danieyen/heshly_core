@@ -3,7 +3,7 @@ from heshly_core.models.tenant import (
 )
 
 from heshly_core.services.tenant.tenant_context import (
-    TenantContextManager,
+    TenantContext,
 )
 
 from heshly_core.services.tenant.query_isolation import (
@@ -17,7 +17,7 @@ def run_test():
     print("Query Isolation Test")
     print("==============================\n")
 
-    context = TenantContextManager()
+    context = TenantContext()
 
     tenant = Tenant(
 

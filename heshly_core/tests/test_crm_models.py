@@ -41,6 +41,7 @@ def run():
     opportunity = Opportunity(
         opportunity_id="OPP-0001",
         lead_id=lead.lead_id,
+            tenant_id="heshly",
         title="Dental Implant",
         expected_value=45000,
         probability=0.75,

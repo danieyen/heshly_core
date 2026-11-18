@@ -30,6 +30,8 @@ class LeadStatusManager:
     VALID_TRANSITIONS = {
         LeadStatus.NEW: [
             LeadStatus.CONTACTED,
+            LeadStatus.QUALIFIED,
+            LeadStatus.UNQUALIFIED,
             LeadStatus.LOST,
         ],
 

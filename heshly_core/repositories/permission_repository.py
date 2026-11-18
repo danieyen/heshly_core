@@ -10,6 +10,8 @@ class PermissionRepository(BaseRepository[Permission]):
     """
 
     def __init__(self):
+        super().__init__()
+
 
         self._permissions: dict[str, Permission] = {}
 

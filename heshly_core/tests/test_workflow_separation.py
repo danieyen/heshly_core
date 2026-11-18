@@ -5,7 +5,7 @@ from heshly_core.models.tenant import (
 )
 
 from heshly_core.services.tenant.tenant_context import (
-    TenantContextManager,
+    TenantContext,
 )
 
 from heshly_core.services.tenant.repository_tenant_filter import (
@@ -32,7 +32,7 @@ def run_test():
     print("================================\n")
 
 
-    context = TenantContextManager()
+    context = TenantContext()
 
     filter_service = RepositoryTenantFilter()
 

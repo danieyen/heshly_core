@@ -1,5 +1,9 @@
 from heshly_core.models.crm import LeadStatus
 
+from heshly_core.services.tenant.tenant_context import (
+    TenantContext,
+)
+
 from heshly_core.services.crm.lead_manager import (
     LeadManager,
 )
@@ -7,16 +11,18 @@ from heshly_core.services.crm.lead_manager import (
 
 def run():
 
+    TenantContext().set("heshly")
+
     manager = LeadManager()
 
 
     # Create
 
     lead = manager.create_lead(
-        business_id="BIZ-001",
+        business_id="heshly",
         full_name="John Doe",
         phone="+254700123456",
-        email="john@example.com",
+        email=f"john-{__import__("uuid").uuid4().hex[:8]}@example.com",
         company="ABC Ltd",
     )
 

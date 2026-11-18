@@ -42,6 +42,7 @@ def run():
         Opportunity(
             opportunity_id="OPP-001",
             lead_id="LEAD-001",
+            tenant_id="heshly",
             title="Dental Package",
             expected_value=200000,
             probability=0.70,
@@ -52,6 +53,7 @@ def run():
         Opportunity(
             opportunity_id="OPP-002",
             lead_id="LEAD-002",
+            tenant_id="heshly",
             title="Website",
             expected_value=100000,
             probability=0.10,

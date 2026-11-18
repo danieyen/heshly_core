@@ -1,73 +1,238 @@
 from __future__ import annotations
 
-from heshly_core.models.crm import (
-    CRMActivity,
-    ActivityType,
-)
+from datetime import datetime
 
-from heshly_core.repositories.base_repository import (
-    BaseRepository,
+import frappe
+
+from heshly_core.models.crm import (
+    ActivityType,
+    CRMActivity,
 )
+from heshly_core.repositories.base_repository import BaseRepository
 
 
 class ActivityRepository(BaseRepository[CRMActivity]):
-    """
-    In-memory Activity Repository.
+    """Persistent, tenant-aware CRM activity repository using Communication."""
 
-    Stores CRM activities such as:
-    - Calls
-    - Emails
-    - WhatsApp messages
-    - Meetings
-    - Notes
-    - Tasks
+    DOCTYPE = "Communication"
 
-    This repository can later be replaced by an
-    ERPNext implementation without changing the
-    ActivityManager.
-    """
+    ID_FIELD = "custom_heshly_activity_id"
+    TENANT_FIELD = "custom_heshly_tenant_id"
+    RELATED_TYPE_FIELD = "custom_heshly_related_type"
+    RELATED_ID_FIELD = "custom_heshly_related_id"
+    ACTIVITY_TYPE_FIELD = "custom_heshly_activity_type"
+    PERFORMED_BY_FIELD = "custom_heshly_performed_by"
+    PERFORMED_AT_FIELD = "custom_heshly_performed_at"
 
-    def __init__(self):
+    def _tenant_id(self) -> str:
+        return self.current_tenant()
 
-        self._storage: dict[str, CRMActivity] = {}
+    def _validate_tenant(self, entity: CRMActivity) -> str:
+        tenant_id = self._tenant_id()
+
+        existing_tenant = frappe.db.get_value(
+            self.DOCTYPE,
+            {
+                self.ID_FIELD: entity.activity_id,
+            },
+            self.TENANT_FIELD,
+        )
+
+        if existing_tenant and existing_tenant != tenant_id:
+            raise PermissionError(
+                "Activity belongs to another tenant."
+            )
+
+        return tenant_id
+
+    def _activity_type_to_frappe(
+        self,
+        activity_type: ActivityType,
+    ) -> str:
+        return activity_type.value
+
+    def _activity_type_from_frappe(
+        self,
+        value: str,
+    ) -> ActivityType:
+        return ActivityType(value)
+
+    def _to_model(self, doc) -> CRMActivity:
+        performed_at = (
+            doc.get(self.PERFORMED_AT_FIELD)
+            or doc.get("communication_date")
+            or doc.creation
+        )
+
+        return CRMActivity(
+            activity_id=doc.get(self.ID_FIELD),
+            related_type=doc.get(self.RELATED_TYPE_FIELD) or "",
+            related_id=doc.get(self.RELATED_ID_FIELD) or "",
+            activity_type=self._activity_type_from_frappe(
+                doc.get(self.ACTIVITY_TYPE_FIELD)
+            ),
+            description=doc.get("content") or "",
+            performed_by=doc.get(self.PERFORMED_BY_FIELD),
+            performed_at=performed_at,
+        )
 
     # =====================================================
     # CRUD
     # =====================================================
 
-    def save(
-        self,
-        entity: CRMActivity,
-    ) -> CRMActivity:
+    def save(self, entity: CRMActivity) -> CRMActivity:
+        tenant_id = self._validate_tenant(entity)
 
-        self._storage[
-            entity.activity_id
-        ] = entity
+        name = frappe.db.get_value(
+            self.DOCTYPE,
+            {
+                self.ID_FIELD: entity.activity_id,
+                self.TENANT_FIELD: tenant_id,
+            },
+            "name",
+        )
 
-        return entity
+        if name:
+            doc = frappe.get_doc(self.DOCTYPE, name)
+        else:
+            doc = frappe.new_doc(self.DOCTYPE)
+
+            doc.communication_type = "Communication"
+            doc.communication_medium = "Other"
+            doc.status = "Open"
+            doc.sent_or_received = "Received"
+
+        doc.subject = entity.description[:140] or "CRM Activity"
+        doc.content = entity.description
+
+        doc.communication_date = entity.performed_at
+
+        doc.set(
+            self.ID_FIELD,
+            entity.activity_id,
+        )
+
+        doc.set(
+            self.TENANT_FIELD,
+            tenant_id,
+        )
+
+        doc.set(
+            self.RELATED_TYPE_FIELD,
+            entity.related_type,
+        )
+
+        doc.set(
+            self.RELATED_ID_FIELD,
+            entity.related_id,
+        )
+
+        doc.set(
+            self.ACTIVITY_TYPE_FIELD,
+            self._activity_type_to_frappe(
+                entity.activity_type
+            ),
+        )
+
+        doc.set(
+            self.PERFORMED_BY_FIELD,
+            entity.performed_by,
+        )
+
+        doc.set(
+            self.PERFORMED_AT_FIELD,
+            entity.performed_at,
+        )
+
+        if entity.related_type and entity.related_id:
+            if frappe.db.exists(
+                entity.related_type,
+                entity.related_id,
+            ):
+                doc.reference_doctype = entity.related_type
+                doc.reference_name = entity.related_id
+
+        doc.save(ignore_permissions=True)
+
+        frappe.db.commit()
+
+        return self._to_model(doc)
 
     def get(
         self,
         entity_id: str,
     ) -> CRMActivity | None:
 
-        return self._storage.get(entity_id)
+        tenant_id = self._tenant_id()
+
+        name = frappe.db.get_value(
+            self.DOCTYPE,
+            {
+                self.ID_FIELD: entity_id,
+                self.TENANT_FIELD: tenant_id,
+            },
+            "name",
+        )
+
+        if not name:
+            return None
+
+        return self._to_model(
+            frappe.get_doc(
+                self.DOCTYPE,
+                name,
+            )
+        )
 
     def list(self) -> list[CRMActivity]:
 
-        return list(
-            self._storage.values()
+        tenant_id = self._tenant_id()
+
+        rows = frappe.get_all(
+            self.DOCTYPE,
+            filters={
+                self.TENANT_FIELD: tenant_id,
+            },
+            fields=["name"],
+            order_by="creation asc",
         )
+
+        return [
+            self._to_model(
+                frappe.get_doc(
+                    self.DOCTYPE,
+                    row.name,
+                )
+            )
+            for row in rows
+        ]
 
     def delete(
         self,
         entity_id: str,
     ) -> bool:
 
-        if entity_id not in self._storage:
+        tenant_id = self._tenant_id()
+
+        name = frappe.db.get_value(
+            self.DOCTYPE,
+            {
+                self.ID_FIELD: entity_id,
+                self.TENANT_FIELD: tenant_id,
+            },
+            "name",
+        )
+
+        if not name:
             return False
 
-        del self._storage[entity_id]
+        frappe.delete_doc(
+            self.DOCTYPE,
+            name,
+            ignore_permissions=True,
+        )
+
+        frappe.db.commit()
 
         return True
 
@@ -80,15 +245,35 @@ class ActivityRepository(BaseRepository[CRMActivity]):
         entity_id: str,
     ) -> bool:
 
-        return entity_id in self._storage
+        return self.get(entity_id) is not None
 
     def count(self) -> int:
 
-        return len(self._storage)
+        return frappe.db.count(
+            self.DOCTYPE,
+            {
+                self.TENANT_FIELD: self._tenant_id(),
+            },
+        )
 
     def clear(self) -> None:
 
-        self._storage.clear()
+        names = frappe.get_all(
+            self.DOCTYPE,
+            filters={
+                self.TENANT_FIELD: self._tenant_id(),
+            },
+            pluck="name",
+        )
+
+        for name in names:
+            frappe.delete_doc(
+                self.DOCTYPE,
+                name,
+                ignore_permissions=True,
+            )
+
+        frappe.db.commit()
 
     # =====================================================
     # Queries
@@ -100,18 +285,25 @@ class ActivityRepository(BaseRepository[CRMActivity]):
         related_id: str,
     ) -> list[CRMActivity]:
 
+        rows = frappe.get_all(
+            self.DOCTYPE,
+            filters={
+                self.TENANT_FIELD: self._tenant_id(),
+                self.RELATED_TYPE_FIELD: related_type,
+                self.RELATED_ID_FIELD: related_id,
+            },
+            fields=["name"],
+            order_by=f"{self.PERFORMED_AT_FIELD} desc",
+        )
+
         return [
-
-            activity
-
-            for activity in self._storage.values()
-
-            if (
-                activity.related_type == related_type
-                and
-                activity.related_id == related_id
+            self._to_model(
+                frappe.get_doc(
+                    self.DOCTYPE,
+                    row.name,
+                )
             )
-
+            for row in rows
         ]
 
     def find_by_type(
@@ -119,14 +311,24 @@ class ActivityRepository(BaseRepository[CRMActivity]):
         activity_type: ActivityType,
     ) -> list[CRMActivity]:
 
+        rows = frappe.get_all(
+            self.DOCTYPE,
+            filters={
+                self.TENANT_FIELD: self._tenant_id(),
+                self.ACTIVITY_TYPE_FIELD: activity_type.value,
+            },
+            fields=["name"],
+            order_by=f"{self.PERFORMED_AT_FIELD} desc",
+        )
+
         return [
-
-            activity
-
-            for activity in self._storage.values()
-
-            if activity.activity_type == activity_type
-
+            self._to_model(
+                frappe.get_doc(
+                    self.DOCTYPE,
+                    row.name,
+                )
+            )
+            for row in rows
         ]
 
     def find_by_user(
@@ -134,14 +336,24 @@ class ActivityRepository(BaseRepository[CRMActivity]):
         performed_by: str,
     ) -> list[CRMActivity]:
 
+        rows = frappe.get_all(
+            self.DOCTYPE,
+            filters={
+                self.TENANT_FIELD: self._tenant_id(),
+                self.PERFORMED_BY_FIELD: performed_by,
+            },
+            fields=["name"],
+            order_by=f"{self.PERFORMED_AT_FIELD} desc",
+        )
+
         return [
-
-            activity
-
-            for activity in self._storage.values()
-
-            if activity.performed_by == performed_by
-
+            self._to_model(
+                frappe.get_doc(
+                    self.DOCTYPE,
+                    row.name,
+                )
+            )
+            for row in rows
         ]
 
     def search(
@@ -149,33 +361,40 @@ class ActivityRepository(BaseRepository[CRMActivity]):
         query: str,
     ) -> list[CRMActivity]:
 
-        query = query.lower()
+        query = query.strip()
 
-        results: list[CRMActivity] = []
+        if not query:
+            return self.list()
 
-        for activity in self._storage.values():
+        rows = frappe.get_all(
+            self.DOCTYPE,
+            filters={
+                self.TENANT_FIELD: self._tenant_id(),
+            },
+            fields=["name"],
+            order_by=f"{self.PERFORMED_AT_FIELD} desc",
+        )
 
-            if query in activity.description.lower():
+        results = []
 
-                results.append(activity)
+        for row in rows:
+            activity = self._to_model(
+                frappe.get_doc(
+                    self.DOCTYPE,
+                    row.name,
+                )
+            )
 
-                continue
+            q = query.lower()
 
             if (
-                activity.performed_by
-                and
-                query in activity.performed_by.lower()
+                q in activity.description.lower()
+                or (
+                    activity.performed_by
+                    and q in activity.performed_by.lower()
+                )
+                or q in activity.related_type.lower()
             ):
-
-                results.append(activity)
-
-                continue
-
-            if (
-                query
-                in activity.related_type.lower()
-            ):
-
                 results.append(activity)
 
         return results
@@ -200,15 +419,10 @@ class ActivityRepository(BaseRepository[CRMActivity]):
     ) -> int:
 
         return len(
-
             self.find_by_related(
-
                 related_type,
-
                 related_id,
-
             )
-
         )
 
     def latest(
@@ -216,12 +430,22 @@ class ActivityRepository(BaseRepository[CRMActivity]):
         limit: int = 10,
     ) -> list[CRMActivity]:
 
-        return sorted(
+        rows = frappe.get_all(
+            self.DOCTYPE,
+            filters={
+                self.TENANT_FIELD: self._tenant_id(),
+            },
+            fields=["name"],
+            order_by=f"{self.PERFORMED_AT_FIELD} desc",
+            limit_page_length=limit,
+        )
 
-            self._storage.values(),
-
-            key=lambda a: a.performed_at,
-
-            reverse=True,
-
-        )[:limit]
+        return [
+            self._to_model(
+                frappe.get_doc(
+                    self.DOCTYPE,
+                    row.name,
+                )
+            )
+            for row in rows
+        ]

@@ -1,1 +1,0 @@
-{ "conversation_id": "={{ $json.conversation_id }}", "tenant_id": "={{ $json.tenant_id }}" }

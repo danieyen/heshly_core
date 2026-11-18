@@ -70,7 +70,7 @@ class SchedulingEngine:
 
                 status=None,
 
-                message="Requested time is unavailable.",
+                message="The requested appointment could not be scheduled.",
             )
 
         return self._appointments.create(

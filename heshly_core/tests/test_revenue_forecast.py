@@ -14,6 +14,7 @@ def run():
     opportunity = Opportunity(
         opportunity_id="OPP-001",
         lead_id="LEAD-001",
+            tenant_id="heshly",
         title="Dental Implant Package",
         expected_value=200000,
         probability=0.75,
@@ -36,6 +37,7 @@ def run():
     bad_opportunity = Opportunity(
         opportunity_id="OPP-002",
         lead_id="LEAD-002",
+            tenant_id="heshly",
         title="Invalid Deal",
         expected_value=-5000,
         probability=0.50,

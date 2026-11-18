@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 from heshly_core.models.crm import Opportunity
+from heshly_core.models.opportunity import OpportunityActivityType
+
+from heshly_core.repositories.opportunity_repository import (
+    OpportunityRepository,
+)
 
 from heshly_core.services.crm.opportunity_creator import (
     OpportunityCreator,
@@ -42,7 +47,15 @@ class OpportunityManager:
         - Sales pipeline automation
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        repository: OpportunityRepository | None = None,
+    ):
+
+        self.repository = (
+            repository
+            or OpportunityRepository()
+        )
 
         self.creator = OpportunityCreator()
 
@@ -75,9 +88,18 @@ class OpportunityManager:
             **kwargs
         )
 
-        self.history_manager.record(
-            opportunity,
-            "Opportunity Created",
+        self.repository.save(
+            opportunity
+        )
+
+        self.history_manager.add_activity(
+            opportunity_id=(
+                opportunity.opportunity_id
+            ),
+            activity_type=(
+                OpportunityActivityType.CREATED
+            ),
+            description="Opportunity Created",
         )
 
         return opportunity
@@ -99,9 +121,18 @@ class OpportunityManager:
 
         opportunity.probability = probability
 
-        self.history_manager.record(
-            opportunity,
-            (
+        self.repository.save(
+            opportunity
+        )
+
+        self.history_manager.add_activity(
+            opportunity_id=(
+                opportunity.opportunity_id
+            ),
+            activity_type=(
+                OpportunityActivityType.VALUE_UPDATED
+            ),
+            description=(
                 "Probability updated: "
                 f"{probability}%"
             ),
@@ -146,6 +177,6 @@ class OpportunityManager:
         opportunity: Opportunity,
     ):
 
-        return self.history_manager.history(
-            opportunity
+        return self.history_manager.get_history(
+            opportunity.opportunity_id
         )

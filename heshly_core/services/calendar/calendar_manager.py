@@ -30,6 +30,14 @@ from heshly_core.services.calendar.scheduling_engine import (
     SchedulingEngine,
 )
 
+from heshly_core.services.calendar.providers.provider_integration import (
+    ProviderIntegration,
+)
+
+from heshly_core.models.calendar_provider import (
+    ProviderConnection,
+)
+
 
 class CalendarManager:
     """
@@ -39,7 +47,13 @@ class CalendarManager:
 
     def __init__(
         self,
+        provider: ProviderIntegration | None = None,
     ) -> None:
+
+        self.provider = (
+            provider
+            or ProviderIntegration()
+        )
 
         self.availability = AvailabilityEngine()
 
@@ -50,7 +64,9 @@ class CalendarManager:
         )
 
         self.appointments = (
-            AppointmentManager()
+            AppointmentManager(
+                provider=self.provider,
+            )
         )
 
         self.scheduler = (

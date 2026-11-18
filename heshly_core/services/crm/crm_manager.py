@@ -89,7 +89,9 @@ class CRMManager:
 
         self.leads = LeadManager()
 
-        self.opportunities = OpportunityManager()
+        self.opportunities = OpportunityManager(
+            repository=self.repositories.opportunities
+        )
 
         self.pipelines = PipelineManager()
 

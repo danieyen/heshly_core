@@ -1,58 +1,38 @@
 from __future__ import annotations
 
-import uuid
+import re
 
 
 class TenantIDStrategy:
     """
-    Tenant ID Strategy.
-
-    Responsible for generating and validating
-    tenant identifiers.
-
-    Every tenant in Heshly must have a globally
-    unique tenant_id.
-
-    Future:
-
-        • ERPNext Site IDs
-        • UUID v7
-        • Distributed ID generators
-        • Human-readable aliases
+    Canonical tenant ID generation.
     """
 
-    PREFIX = "tenant"
-
-    # =====================================================
-    # Generation
-    # =====================================================
-
     @classmethod
-    def generate(cls) -> str:
-
-        return f"{cls.PREFIX}_{uuid.uuid4().hex}"
-
-    # =====================================================
-    # Validation
-    # =====================================================
-
-    @classmethod
-    def is_valid(
+    def from_business_id(
         cls,
-        tenant_id: str,
-    ) -> bool:
+        business_id: str,
+    ) -> str:
 
-        if not tenant_id:
+        tenant = business_id.strip().lower()
 
-            return False
-
-        return tenant_id.startswith(
-            f"{cls.PREFIX}_"
+        tenant = re.sub(
+            r"[^a-z0-9]+",
+            "_",
+            tenant,
         )
 
-    # =====================================================
-    # Helpers
-    # =====================================================
+        return tenant.strip("_")
+
+    @classmethod
+    def generate(
+        cls,
+        business_id: str,
+    ) -> str:
+
+        return cls.from_business_id(
+            business_id,
+        )
 
     @classmethod
     def normalize(
@@ -60,26 +40,24 @@ class TenantIDStrategy:
         tenant_id: str,
     ) -> str:
 
-        return tenant_id.strip().lower()
+        return cls.from_business_id(
+            tenant_id,
+        )
 
     @classmethod
-    def summary(cls) -> dict:
+    def is_valid(
+        cls,
+        tenant_id: str,
+    ) -> bool:
 
-        return {
-
-            "strategy": "uuid4",
-
-            "prefix": cls.PREFIX,
-
-        }
+        return bool(
+            cls.normalize(tenant_id)
+        )
 
     @classmethod
-    def health(cls) -> dict:
+    def health(cls):
 
         return {
-
             "service": "tenant_id_strategy",
-
             "status": "healthy",
-
         }

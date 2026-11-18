@@ -1,258 +1,97 @@
 app_name = "heshly_core"
 app_title = "Heshly Core"
 app_publisher = "Heshly"
-app_description = "AI Receptionist Platform"
-app_email = "mwathidan12@gmail.com"
-app_license = "mit"
+app_description = "AI Receptionist & Multi-Tenant SaaS Platform"
+app_email = "admin@heshly.com"
+app_license = "MIT"
 
-# Apps
-# ------------------
 
-# required_apps = []
+# =====================================================
+# Request Hooks
+# =====================================================
 
-# Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "heshly_core",
-# 		"logo": "/assets/heshly_core/logo.png",
-# 		"title": "Heshly Core",
-# 		"route": "/heshly_core",
-# 		"has_permission": "heshly_core.api.permission.has_app_permission"
-# 	}
-# ]
+before_request = [
+    "heshly_core.services.tenant.request_hooks.before_request",
+]
 
-# Includes in <head>
-# ------------------
+after_request = [
+    "heshly_core.services.tenant.request_hooks.after_request",
+]
 
-# include js, css files in header of desk.html
-# app_include_css = "/assets/heshly_core/css/heshly_core.css"
-# app_include_js = "/assets/heshly_core/js/heshly_core.js"
+# Heshly tenant propagation for Appointment -> Event -> Communication lifecycle
+doc_events = {
+    "Communication": {
+        "before_insert": "heshly_core.services.tenant.communication_tenant_hook.communication_before_insert",
+    },
+    "Event": {
+        "before_insert": "heshly_core.services.tenant.communication_tenant_hook.event_before_insert",
+    },
+}
 
-# include js, css files in header of web template
-# web_include_css = "/assets/heshly_core/css/heshly_core.css"
-# web_include_js = "/assets/heshly_core/js/heshly_core.js"
 
-# include custom scss in every website theme (without file extension ".scss")
-# website_theme_scss = "heshly_core/public/scss/website"
+permission_query_conditions = {
+    "Business Account": "heshly_core.services.tenant.permission_query_conditions.business_account_query",
+    "Custom Domain": "heshly_core.services.tenant.permission_query_conditions.custom_domain_query",
+    "Heshly WhatsApp Number": "heshly_core.services.tenant.permission_query_conditions.heshly_whatsapp_number_query",
+    "Heshly WhatsApp Configuration": "heshly_core.services.tenant.permission_query_conditions.heshly_whatsapp_configuration_query",
+    "Heshly Workflow Version": "heshly_core.services.tenant.permission_query_conditions.heshly_workflow_version_query",
+    "Heshly Workflow Assignment": "heshly_core.services.tenant.permission_query_conditions.heshly_workflow_assignment_query",
+    "AI Conversation": "heshly_core.services.tenant.permission_query_conditions.ai_conversation_query",
+    "AI Session": "heshly_core.services.tenant.permission_query_conditions.ai_session_query",
+    "Heshly WhatsApp Activity": "heshly_core.services.tenant.permission_query_conditions.heshly_whatsapp_activity_query",
+    "Heshly Subscription": "heshly_core.services.tenant.permission_query_conditions.heshly_subscription_query",
+    "Business Knowledge Profile": "heshly_core.services.tenant.permission_query_conditions.business_knowledge_profile_query",
+    "AI Configuration": "heshly_core.services.tenant.permission_query_conditions.ai_configuration_query",
+    "Appointment": "heshly_core.services.tenant.permission_query_conditions.appointment_query",
+    "Event": "heshly_core.services.tenant.permission_query_conditions.event_query",
+    "Lead": "heshly_core.services.tenant.permission_query_conditions.lead_query",
+    "Heshly Calendar Connection": "heshly_core.services.tenant.permission_query_conditions.heshly_calendar_connection_query",
+    # Layer 2 — Heshly Network (tenant-scoped where applicable)
+    "Heshly Network Membership": "heshly_core.services.network.permission_query_conditions.heshly_network_membership_query",
+    "Heshly Network Dispatch": "heshly_core.services.network.permission_query_conditions.heshly_network_dispatch_query",
+    # Heshly Network Conversation is network-owned (no tenant row filter at DB level);
+    # API enforces tenant visibility via dispatches/assigned_tenant_id — allow all for System Manager,
+    # otherwise API layer filters. PQC returns 1=1 for admin, 1=0 otherwise is handled in API.
+    "Heshly Network Conversation": "heshly_core.services.network.permission_query_conditions.heshly_network_conversation_query",
+}
 
-# include js, css files in header of web form
-# webform_include_js = {"doctype": "public/js/doctype.js"}
-# webform_include_css = {"doctype": "public/css/doctype.css"}
 
-# include js in page
-# page_js = {"page" : "public/js/file.js"}
+has_permission = {
+    "Business Account": "heshly_core.services.tenant.document_permissions.business_account_has_permission",
+    "Custom Domain": "heshly_core.services.tenant.document_permissions.custom_domain_has_permission",
+    "Heshly WhatsApp Number": "heshly_core.services.tenant.document_permissions.heshly_whatsapp_number_has_permission",
+    "Heshly WhatsApp Configuration": "heshly_core.services.tenant.document_permissions.heshly_whatsapp_configuration_has_permission",
+    "Heshly Workflow Version": "heshly_core.services.tenant.document_permissions.heshly_workflow_version_has_permission",
+    "Heshly Workflow Assignment": "heshly_core.services.tenant.document_permissions.heshly_workflow_assignment_has_permission",
+    "AI Conversation": "heshly_core.services.tenant.document_permissions.ai_conversation_has_permission",
+    "AI Session": "heshly_core.services.tenant.document_permissions.ai_session_has_permission",
+    "Heshly WhatsApp Activity": "heshly_core.services.tenant.document_permissions.heshly_whatsapp_activity_has_permission",
+    "Heshly Subscription": "heshly_core.services.tenant.document_permissions.heshly_subscription_has_permission",
+    "Business Knowledge Profile": "heshly_core.services.tenant.document_permissions.business_knowledge_profile_has_permission",
+    "AI Configuration": "heshly_core.services.tenant.document_permissions.ai_configuration_has_permission",
+    "Appointment": "heshly_core.services.tenant.document_permissions.appointment_has_permission",
+    "Event": "heshly_core.services.tenant.document_permissions.event_has_permission",
+    "Lead": "heshly_core.services.tenant.document_permissions.lead_has_permission",
+    "Heshly Calendar Connection": "heshly_core.services.tenant.document_permissions.heshly_calendar_connection_has_permission",
+    # Layer 2 — Heshly Network
+    "Heshly Network Membership": "heshly_core.services.network.document_permissions.heshly_network_membership_has_permission",
+    "Heshly Network Dispatch": "heshly_core.services.network.document_permissions.heshly_network_dispatch_has_permission",
+    "Heshly Network Conversation": "heshly_core.services.network.document_permissions.heshly_network_conversation_has_permission",
+}
 
-# include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
-# doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
-# doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
+# =====================================================
+# SSL Certificate Monitoring
+# =====================================================
 
-# Svg Icons
-# ------------------
-# include app icons in desk
-# app_include_icons = "heshly_core/public/icons.svg"
-
-# Home Pages
-# ----------
-
-# application home page (will override Website Settings)
-# home_page = "login"
-
-# website user home page (by Role)
-# role_home_page = {
-# 	"Role": "home_page"
-# }
-
-# Generators
-# ----------
-
-# automatically create page for each record of this doctype
-# website_generators = ["Web Page"]
-
-# automatically load and sync documents of this doctype from downstream apps
-# importable_doctypes = [doctype_1]
-
-# Jinja
-# ----------
-
-# add methods and filters to jinja environment
-# jinja = {
-# 	"methods": "heshly_core.utils.jinja_methods",
-# 	"filters": "heshly_core.utils.jinja_filters"
-# }
-
-# Installation
-# ------------
-
-# before_install = "heshly_core.install.before_install"
-# after_install = "heshly_core.install.after_install"
-
-# Uninstallation
-# ------------
-
-# before_uninstall = "heshly_core.uninstall.before_uninstall"
-# after_uninstall = "heshly_core.uninstall.after_uninstall"
-
-# Integration Setup
-# ------------------
-# To set up dependencies/integrations with other apps
-# Name of the app being installed is passed as an argument
-
-# before_app_install = "heshly_core.utils.before_app_install"
-# after_app_install = "heshly_core.utils.after_app_install"
-
-# Integration Cleanup
-# -------------------
-# To clean up dependencies/integrations with other apps
-# Name of the app being uninstalled is passed as an argument
-
-# before_app_uninstall = "heshly_core.utils.before_app_uninstall"
-# after_app_uninstall = "heshly_core.utils.after_app_uninstall"
-
-# Build
-# ------------------
-# To hook into the build process
-
-# after_build = "heshly_core.build.after_build"
-
-# Desk Notifications
-# ------------------
-# See frappe.core.notifications.get_notification_config
-
-# notification_config = "heshly_core.notifications.get_notification_config"
-
-# Permissions
-# -----------
-# Permissions evaluated in scripted ways
-
-# permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
-#
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
-
-# Document Events
-# ---------------
-# Hook on document methods and events
-
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
-
-# Scheduled Tasks
-# ---------------
-
-# scheduler_events = {
-# 	"all": [
-# 		"heshly_core.tasks.all"
-# 	],
-# 	"daily": [
-# 		"heshly_core.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"heshly_core.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"heshly_core.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"heshly_core.tasks.monthly"
-# 	],
-# }
-
-# Testing
-# -------
-
-# before_tests = "heshly_core.install.before_tests"
-
-# Extend DocType Class
-# ------------------------------
-#
-# Specify custom mixins to extend the standard doctype controller.
-# extend_doctype_class = {
-# 	"Task": "heshly_core.custom.task.CustomTaskMixin"
-# }
-
-# Overriding Methods
-# ------------------------------
-#
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "heshly_core.event.get_events"
-# }
-#
-# each overriding function accepts a `data` argument;
-# generated from the base implementation of the doctype dashboard,
-# along with any modifications made in other Frappe apps
-# override_doctype_dashboards = {
-# 	"Task": "heshly_core.task.get_dashboard_data"
-# }
-
-# exempt linked doctypes from being automatically cancelled
-#
-# auto_cancel_exempted_doctypes = ["Auto Repeat"]
-
-# Ignore links to specified DocTypes when deleting documents
-# -----------------------------------------------------------
-
-# ignore_links_on_delete = ["Communication", "ToDo"]
-
-# Request Events
-# ----------------
-# before_request = ["heshly_core.utils.before_request"]
-# after_request = ["heshly_core.utils.after_request"]
-
-# Job Events
-# ----------
-# before_job = ["heshly_core.utils.before_job"]
-# after_job = ["heshly_core.utils.after_job"]
-
-# User Data Protection
-# --------------------
-
-# user_data_fields = [
-# 	{
-# 		"doctype": "{doctype_1}",
-# 		"filter_by": "{filter_by}",
-# 		"redact_fields": ["{field_1}", "{field_2}"],
-# 		"partial": 1,
-# 	},
-# 	{
-# 		"doctype": "{doctype_2}",
-# 		"filter_by": "{filter_by}",
-# 		"partial": 1,
-# 	},
-# 	{
-# 		"doctype": "{doctype_3}",
-# 		"strict": False,
-# 	},
-# 	{
-# 		"doctype": "{doctype_4}"
-# 	}
-# ]
-
-# Authentication and authorization
-# --------------------------------
-
-# auth_hooks = [
-# 	"heshly_core.auth.validate"
-# ]
-
-# Automatically update python controller files with type annotations for this app.
-# export_python_type_annotations = True
-
-# default_log_clearing_doctypes = {
-# 	"Logging DocType Name": 30  # days to retain logs
-# }
-
-# Translation
-# ------------
-# List of apps whose translatable strings should be excluded from this app's translations.
-# ignore_translatable_strings_from = []
-
+scheduler_events = {
+    "hourly": [
+        "heshly_core.services.custom_domain.ssl_scheduler.check_all_custom_domain_ssl",
+        "heshly_core.services.network.scheduler.reconcile_timeouts",
+    ],
+    # Finer-grained for network dispatch (5-min timeout). Keep idempotent — safe to run even if same hour.
+    "cron": {
+        "*/5 * * * *": [
+            "heshly_core.services.network.scheduler.reconcile_timeouts",
+        ],
+    },
+}

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Heshly">
+<rect width="512" height="512" rx="96" fill="#000000"/>
+<defs>
+  <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#E8D5A8"/>
+    <stop offset="30%" stop-color="#C9A96A"/>
+    <stop offset="65%" stop-color="#D4B47E"/>
+    <stop offset="100%" stop-color="#8C6A2E"/>
+  </linearGradient>
+</defs>
+<!-- Serif H - left stem -->
+<path d="M148 112 H238 L226 126 V386 L238 400 H148 L160 386 V126 Z" fill="url(#gold)"/>
+<!-- Serif H - right stem -->
+<path d="M274 112 H364 L352 126 V386 L364 400 H274 L286 386 V126 Z" fill="url(#gold)"/>
+<!-- Crossbar — stepped official mark (left higher, right lower) -->
+<path d="M226 236 H289 V252 H352 V276 H289 V260 H226 Z" fill="url(#gold)"/>
+</svg>

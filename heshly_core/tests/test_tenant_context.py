@@ -3,7 +3,7 @@ from heshly_core.models.tenant import (
 )
 
 from heshly_core.services.tenant.tenant_context import (
-    TenantContextManager,
+    TenantContext,
 )
 
 
@@ -15,7 +15,7 @@ def run_test():
     print("==============================\n")
 
 
-    context = TenantContextManager()
+    context = TenantContext()
 
 
     tenant = Tenant(

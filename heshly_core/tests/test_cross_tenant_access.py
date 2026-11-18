@@ -5,7 +5,7 @@ from heshly_core.models.tenant import (
 )
 
 from heshly_core.services.tenant.tenant_context import (
-    TenantContextManager,
+    TenantContext,
 )
 
 from heshly_core.services.tenant.cross_tenant_access import (
@@ -27,7 +27,7 @@ def run_test():
     print("Cross-Tenant Access Test")
     print("==============================\n")
 
-    context = TenantContextManager()
+    context = TenantContext()
 
     tenant = Tenant(
 

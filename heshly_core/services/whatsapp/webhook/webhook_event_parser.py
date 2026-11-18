@@ -70,28 +70,28 @@ class WhatsAppWebhookEventParser:
         value = payload["entry"][0]["changes"][0]["value"]
 
         contact = value["contacts"][0]
-
         message = value["messages"][0]
 
+        metadata = value.get("metadata") or {}
+
+        phone_number_id = metadata.get(
+            "phone_number_id"
+        )
+
         return IncomingMessageEvent(
-
             message_id=message["id"],
-
             phone_number=contact["wa_id"],
-
-            customer_name=contact["profile"].get(
-                "name"
-            ),
-
+            customer_name=contact.get(
+                "profile", {}
+            ).get("name"),
             message_type=message["type"],
-
-            text=message["text"].get(
-                "body"
+            text=(
+                message.get("text", {}).get("body")
+                if message["type"] == "text"
+                else None
             ),
-
-            timestamp=message.get(
-                "timestamp"
-            ),
+            timestamp=message.get("timestamp"),
+            phone_number_id=phone_number_id,
         )
 
     def parse_status(

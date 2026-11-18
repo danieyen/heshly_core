@@ -1,0 +1,282 @@
+from __future__ import annotations
+
+import frappe
+
+from heshly_core.models.subscription import (
+    Subscription,
+    SubscriptionPlan,
+    SubscriptionStatus,
+    BillingCycle,
+)
+
+
+class FrappeSubscriptionRepository:
+    """
+    Repository backed by the Heshly Subscription DocType.
+    """
+
+    STATUS_TO_FRAPPE = {
+        SubscriptionStatus.TRIAL: "Trial",
+        SubscriptionStatus.ACTIVE: "Active",
+        SubscriptionStatus.PAST_DUE: "Past Due",
+        SubscriptionStatus.SUSPENDED: "Suspended",
+        SubscriptionStatus.CANCELLED: "Cancelled",
+        SubscriptionStatus.EXPIRED: "Expired",
+    }
+
+    STATUS_FROM_FRAPPE = {
+        "Trial": SubscriptionStatus.TRIAL,
+        "Active": SubscriptionStatus.ACTIVE,
+        "Past Due": SubscriptionStatus.PAST_DUE,
+        "Suspended": SubscriptionStatus.SUSPENDED,
+        "Cancelled": SubscriptionStatus.CANCELLED,
+        "Expired": SubscriptionStatus.EXPIRED,
+    }
+
+    BILLING_TO_FRAPPE = {
+        BillingCycle.MONTHLY: "Monthly",
+        BillingCycle.QUARTERLY: "Quarterly",
+        BillingCycle.YEARLY: "Yearly",
+    }
+
+    BILLING_FROM_FRAPPE = {
+        "Monthly": BillingCycle.MONTHLY,
+        "Quarterly": BillingCycle.QUARTERLY,
+        "Yearly": BillingCycle.YEARLY,
+    }
+
+    # =====================================================
+    # Helpers
+    # =====================================================
+
+    @staticmethod
+    def _naive(dt):
+        """
+        Convert timezone-aware datetimes to naive datetimes
+        for MariaDB/Frappe.
+        """
+        if dt is None:
+            return None
+
+        if getattr(dt, "tzinfo", None):
+            return dt.replace(tzinfo=None)
+
+        return dt
+
+    # =====================================================
+    # Save
+    # =====================================================
+
+    def save(
+        self,
+        subscription: Subscription,
+    ) -> Subscription:
+
+        if frappe.db.exists(
+            "Heshly Subscription",
+            subscription.subscription_id,
+        ):
+            doc = frappe.get_doc(
+                "Heshly Subscription",
+                subscription.subscription_id,
+            )
+        else:
+            doc = frappe.new_doc(
+                "Heshly Subscription"
+            )
+
+        doc.subscription_id = subscription.subscription_id
+        doc.tenant_id = subscription.tenant_id
+        doc.business_id = subscription.business_id
+
+        doc.plan = subscription.plan.name
+
+        doc.status = self.STATUS_TO_FRAPPE.get(
+            subscription.status,
+            "Trial",
+        )
+
+        doc.billing_cycle = self.BILLING_TO_FRAPPE.get(
+            subscription.billing_cycle,
+            "Monthly",
+        )
+
+        doc.start_date = self._naive(
+            subscription.start_date
+        )
+
+        doc.renewal_date = self._naive(
+            subscription.renewal_date
+        )
+
+        doc.trial_end = self._naive(
+            subscription.trial_end
+        )
+
+        doc.cancelled_at = self._naive(
+            subscription.cancelled_at
+        )
+
+        doc.save(
+            ignore_permissions=True
+        )
+
+        frappe.db.commit()
+
+        return subscription
+
+    # =====================================================
+    # Get
+    # =====================================================
+
+    def get(
+        self,
+        subscription_id: str,
+    ) -> Subscription | None:
+
+        if not frappe.db.exists(
+            "Heshly Subscription",
+            subscription_id,
+        ):
+            return None
+
+        doc = frappe.get_doc(
+            "Heshly Subscription",
+            subscription_id,
+        )
+
+        plan = SubscriptionPlan(
+            plan_id=doc.plan.lower().replace(
+                " ",
+                "_",
+            ),
+            name=doc.plan,
+        )
+
+        return Subscription(
+            subscription_id=doc.subscription_id,
+            tenant_id=doc.tenant_id,
+            business_id=doc.business_id,
+            plan=plan,
+            status=self.STATUS_FROM_FRAPPE.get(
+                doc.status,
+                SubscriptionStatus.TRIAL,
+            ),
+            billing_cycle=self.BILLING_FROM_FRAPPE.get(
+                doc.billing_cycle,
+                BillingCycle.MONTHLY,
+            ),
+            start_date=doc.start_date,
+            renewal_date=doc.renewal_date,
+            trial_end=doc.trial_end,
+            cancelled_at=doc.cancelled_at,
+        )
+
+    # =====================================================
+    # Get By Business
+    # =====================================================
+
+    def get_by_business(
+        self,
+        business_id: str,
+    ) -> Subscription | None:
+
+        name = frappe.db.get_value(
+            "Heshly Subscription",
+            {
+                "business_id": business_id,
+            },
+            "name",
+        )
+
+        if not name:
+            return None
+
+        return self.get(name)
+
+    # =====================================================
+    # All
+    # =====================================================
+
+    def all(
+        self,
+    ) -> list[Subscription]:
+
+        subscriptions = []
+
+        names = frappe.get_all(
+            "Heshly Subscription",
+            pluck="name",
+        )
+
+        for name in names:
+
+            subscription = self.get(name)
+
+            if subscription:
+
+                subscriptions.append(
+                    subscription
+                )
+
+        return subscriptions
+
+    # =====================================================
+    # Delete
+    # =====================================================
+
+    def delete(
+        self,
+        subscription_id: str,
+    ) -> None:
+
+        if frappe.db.exists(
+            "Heshly Subscription",
+            subscription_id,
+        ):
+
+            frappe.delete_doc(
+                "Heshly Subscription",
+                subscription_id,
+                force=True,
+            )
+
+            frappe.db.commit()
+
+    # =====================================================
+    # Clear
+    # =====================================================
+
+    def clear(
+        self,
+    ):
+
+        for name in frappe.get_all(
+            "Heshly Subscription",
+            pluck="name",
+        ):
+
+            frappe.delete_doc(
+                "Heshly Subscription",
+                name,
+                force=True,
+            )
+
+        frappe.db.commit()
+
+    # =====================================================
+    # Health
+    # =====================================================
+
+    def health(
+        self,
+    ) -> dict:
+
+        return {
+            "repository": "frappe_subscription_repository",
+            "status": "healthy",
+            "records": frappe.db.count(
+                "Heshly Subscription"
+            ),
+        }
+

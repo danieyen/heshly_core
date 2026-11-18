@@ -186,7 +186,7 @@ class TimelineBuilder:
 
                     event_type="whatsapp",
 
-                    title=message.direction.value,
+                    title=(message.direction.value if hasattr(message.direction, "value") else message.direction),
 
                     description=message.message,
 

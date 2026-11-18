@@ -1,156 +1,105 @@
-from heshly_core.models.business_account import (
-    BusinessAccount,
-)
-
-from heshly_core.models.business_profile import (
-    BusinessProfile,
-)
-
-from heshly_core.models.business_settings import (
-    BusinessSettings,
-)
+import frappe
 
 from heshly_core.services.business.business_manager import (
     BusinessManager,
 )
 
+from heshly_core.services.tenant.tenant_context import (
+    TenantContext,
+)
 
 
 def run_test():
 
-    print("\n==============================")
-    print("Business Manager Test")
-    print("==============================\n")
+    print("\n========================================")
+    print("Business Manager / Frappe Test")
+    print("========================================\n")
 
-
+    context = TenantContext()
     manager = BusinessManager()
 
+    context.set("heshly")
 
-    business = BusinessAccount(
+    print("context:", context.get())
 
-        business_id="business_001",
-
-        tenant_id="tenant_001",
-
-        name="Acme Dental",
-
+    print(
+        "repository:",
+        manager.repository.__class__.__name__,
     )
-
-
-    manager.create(
-        business
-    )
-
-
-    print("✅ Business creation passed")
-
-
-
-    result = manager.get(
-        "business_001"
-    )
-
-
-    assert result is not None
-
-    assert result.name == "Acme Dental"
-
-
-    print("✅ Business retrieval passed")
-
-
-
-    profile = BusinessProfile(
-
-        business_id="business_001",
-
-        name="Acme Dental",
-
-        industry="Dental",
-
-    )
-
-
-    manager.update_profile(
-
-        "business_001",
-
-        profile,
-
-    )
-
 
     assert (
-        manager.get(
-            "business_001"
-        ).profile.industry
-        ==
-        "Dental"
+        manager.repository.__class__.__name__
+        == "FrappeBusinessRepository"
     )
 
+    print("✅ Frappe repository confirmed")
 
-    print("✅ Profile update passed")
+    business = manager.get("HESHLY")
 
+    print("business:", business)
 
+    assert business is not None
+    assert business.business_id == "HESHLY"
+    assert business.tenant_id == "heshly"
+    assert business.name == "Heshly"
+    assert business.status == "active"
 
-    settings = BusinessSettings(
+    print("✅ Existing business retrieval passed")
 
-        business_id="business_001"
+    context.set("tenant_other")
 
+    wrong_tenant = manager.get("HESHLY")
+
+    print("wrong tenant result:", wrong_tenant)
+
+    assert wrong_tenant is None
+
+    print("✅ Manager tenant isolation passed")
+
+    context.set("heshly")
+
+    missing = manager.get("DOES_NOT_EXIST")
+
+    assert missing is None
+
+    print("✅ Missing business handling passed")
+
+    try:
+        manager.get("")
+    except ValueError as e:
+        print("missing ID:", e)
+    else:
+        raise AssertionError(
+            "Expected ValueError for missing business_id"
+        )
+
+    print("✅ Missing business_id validation passed")
+
+    health = manager.health()
+
+    print("health:", health)
+
+    assert health["status"] == "healthy"
+
+    print("✅ Manager health passed")
+
+    repository_health = manager.repository.health()
+
+    print(
+        "repository health:",
+        repository_health,
     )
 
+    assert repository_health["status"] == "healthy"
+    assert repository_health["tenant"] is True
 
-    manager.update_settings(
+    print("✅ Repository health passed")
 
-        "business_001",
+    context.clear()
 
-        settings,
-
-    )
-
-
-    print("✅ Settings update passed")
-
-
-
-    manager.suspend(
-        "business_001"
-    )
-
-
-    assert (
-        manager.get(
-            "business_001"
-        ).status
-        ==
-        "suspended"
-    )
-
-
-    print("✅ Suspension passed")
-
-
-
-    manager.activate(
-        "business_001"
-    )
-
-
-    assert (
-        manager.get(
-            "business_001"
-        ).is_active
-    )
-
-
-    print("✅ Activation passed")
-
-
-
-    print("\n🎉 BUSINESS MANAGER TEST PASSED\n")
-
+    print()
+    print("🎉 BUSINESS MANAGER / FRAPPE TEST PASSED")
 
 
 if __name__ == "__main__":
-
     run_test()

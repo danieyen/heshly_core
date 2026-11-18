@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from heshly_core.services.tenant.tenant_context import (
-    TenantContextManager,
+    TenantContext,
 )
 
 
@@ -17,7 +17,7 @@ class CrossTenantAccess:
 
     def __init__(self):
 
-        self.context = TenantContextManager()
+        self.context = TenantContext()
 
     # =====================================================
     # Authorization
@@ -36,7 +36,7 @@ class CrossTenantAccess:
             None,
         )
 
-        if resource_tenant != tenant.tenant_id:
+        if resource_tenant != tenant:
 
             raise PermissionError(
                 "Cross-tenant access denied."
@@ -69,7 +69,7 @@ class CrossTenantAccess:
 
             ==
 
-            tenant.tenant_id
+            tenant
 
         )
 

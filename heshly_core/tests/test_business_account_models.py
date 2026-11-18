@@ -22,6 +22,8 @@ def run_test():
 
         name="Acme Dental Clinic",
 
+        domain="acme.example.com",
+
         email="admin@acme.com",
 
         profile=BusinessProfile(

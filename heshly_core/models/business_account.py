@@ -70,6 +70,8 @@ class BusinessAccount:
 
     name: str
 
+    domain: str
+
     email: str | None = None
 
     phone: str | None = None

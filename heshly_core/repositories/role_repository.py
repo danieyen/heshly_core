@@ -10,6 +10,8 @@ class RoleRepository(BaseRepository[Role]):
     """
 
     def __init__(self):
+        super().__init__()
+
 
         self._roles: dict[str, Role] = {}
 

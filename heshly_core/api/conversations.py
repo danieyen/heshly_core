@@ -192,39 +192,218 @@ class ConversationAPI:
     def get(self, payload: Any = None, **kwargs: Any) -> dict | None:
         try:
             data = _unwrap_payload(payload, kwargs)
-            tenant_id = _extract_tenant_id(data) or "demo_tenant"
+            tenant_id = _extract_tenant_id(data)
             conversation_id = _get_param(data, ["conversation_id", "conversationId", "id", "conversation", "chat_id", "chatId"])
             phone_number = _get_param(data, ["phone_number", "phoneNumber", "phone", "mobile"])
             phone_number_id = _get_param(data, ["phone_number_id", "phoneNumberId"])
             customer_id = _get_param(data, ["customer_id", "customerId", "customer"])
+            # Tenant isolation: require tenant_id - never default to demo_tenant
+            if not tenant_id or not str(tenant_id).strip():
+                return {
+                    "success": False,
+                    "error": "tenant_id is required - tenant resolution failed",
+                    "conversation_id": str(conversation_id).strip() if conversation_id else None,
+                    "tenant_id": None,
+                    "turns": [],
+                    "conversation_history": [],
+                }
+            tenant_id = str(tenant_id).strip()
+            # Derive deterministic conversation_id if not provided but phone is known
+            if not conversation_id and phone_number and str(phone_number).strip():
+                conversation_id = f"{tenant_id}:{str(phone_number).strip()}"
             if not conversation_id and not phone_number and not customer_id:
                 return None
+            if conversation_id:
+                conversation_id = str(conversation_id).strip()
+                if not conversation_id:
+                    return None
+            # Try tenant-aware stores - must pass tenant_id so lookup is deterministic
             for module_path, class_name in [
-                ("heshly_core.services.conversation.conversation_manager", "ConversationManager"),
                 ("heshly_core.services.conversation.conversation_store", "ConversationStore"),
+                ("heshly_core.services.conversation.conversation_manager", "ConversationManager"),
                 ("heshly_core.services.conversation.conversation_engine", "ConversationEngine"),
             ]:
                 try:
                     import importlib
                     mod = importlib.import_module(module_path)
                     cls = getattr(mod, class_name, None)
-                    if cls is not None:
-                        inst = cls()
-                        if hasattr(inst, "get"):
+                    if cls is None:
+                        continue
+                    # Instantiate with explicit tenant_id for isolation
+                    inst = None
+                    try:
+                        inst = cls(tenant_id=tenant_id)  # type: ignore
+                    except TypeError:
+                        try:
+                            inst = cls(tenant_id)  # type: ignore
+                        except Exception:
+                            inst = cls()  # type: ignore
+                            # Try to set tenant context as fallback
                             try:
-                                res = inst.get(str(conversation_id).strip() if conversation_id else phone_number)  # type: ignore
-                                if res is not None:
-                                    if hasattr(res, "to_dict"):
-                                        return res.to_dict()
-                                    if isinstance(res, dict):
-                                        return res
+                                from heshly_core.services.tenant.tenant_context import TenantContext
+                                TenantContext().set(tenant_id)
                             except Exception:
+                                pass
+                    if inst is None or not hasattr(inst, "get"):
+                        continue
+                    try:
+                        # Always lookup by conversation_id (deterministic tenant:phone). Phone-only fallback already resolved above.
+                        lookup_id = conversation_id if conversation_id else str(phone_number).strip()
+                        res = inst.get(lookup_id)  # type: ignore
+                        if res is not None:
+                            d = res.to_dict() if hasattr(res, "to_dict") else (dict(res) if isinstance(res, dict) else None)
+                            if d is None:
                                 continue
+                            # Enforce tenant isolation: returned conversation must belong to requested tenant
+                            ret_tenant = str(d.get("tenant_id") or d.get("tenantId") or "").strip() if isinstance(d, dict) else ""
+                            # Some to_dict may not include tenant_id - verify via conversation_id prefix
+                            if ret_tenant and ret_tenant != tenant_id:
+                                continue
+                            # Ensure chronological ordering of turns
+                            if isinstance(d, dict) and isinstance(d.get("turns"), list):
+                                try:
+                                    # Sort by timestamp if available, preserve insertion order otherwise
+                                    def _ts_key(t):
+                                        ts = t.get("timestamp") if isinstance(t, dict) else getattr(t, "timestamp", None)
+                                        if isinstance(ts, str):
+                                            try:
+                                                from datetime import datetime
+                                                return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                                            except Exception:
+                                                return ts
+                                        return ts or ""
+                                    # Only sort if timestamps look parseable and not already sorted
+                                    d["turns"] = sorted(d["turns"], key=_ts_key)
+                                except Exception:
+                                    pass
+                                # Also expose as conversation_history for n8n compatibility
+                                d["conversation_history"] = list(d["turns"])
+                                d["history"] = list(d["turns"])
+                            # Enrich with request identifiers for downstream validation
+                            if isinstance(d, dict):
+                                d.setdefault("tenant_id", tenant_id)
+                                d.setdefault("conversation_id", conversation_id)
+                                if phone_number_id:
+                                    d.setdefault("phone_number_id", str(phone_number_id).strip())
+                                if phone_number:
+                                    d.setdefault("phone_number", str(phone_number).strip())
+                            return d
+                    except Exception:
+                        continue
                 except Exception:
                     continue
-            return None
+            # No conversation found - return empty history tied to correct tenant+conversation_id (so caller can still isolate)
+            return {
+                "success": True,
+                "found": False,
+                "tenant_id": tenant_id,
+                "conversation_id": conversation_id,
+                "phone_number": str(phone_number).strip() if phone_number else None,
+                "phone_number_id": str(phone_number_id).strip() if phone_number_id else None,
+                "turns": [],
+                "conversation_history": [],
+                "history": [],
+                "message": "Conversation not found - new conversation",
+            }
         except Exception:
             return None
+
+    def create(self, payload: Any = None, **kwargs: Any) -> dict:
+        """
+        Create or return a WhatsApp conversation.
+
+        Uses the existing ConversationManager as the single source
+        of conversation creation/persistence. Designed for n8n payloads.
+        """
+        try:
+            data = _unwrap_payload(payload, kwargs)
+
+            tenant_id = _extract_tenant_id(data)
+            conversation_id = _get_param(
+                data,
+                ["conversation_id", "conversationId", "id", "conversation", "chat_id", "chatId"],
+            )
+            customer_id = _get_param(
+                data,
+                ["customer_id", "customerId", "customer"],
+            )
+            phone_number = _get_param(
+                data,
+                ["phone_number", "phoneNumber", "phone", "mobile"],
+            )
+
+            if not conversation_id and tenant_id and phone_number:
+                conversation_id = f"{tenant_id}:{str(phone_number).strip()}"
+
+            if not customer_id and phone_number:
+                customer_id = str(phone_number).strip()
+
+            if not tenant_id:
+                return {
+                    "success": False,
+                    "error": "tenant_id is required",
+                }
+
+            if not conversation_id:
+                return {
+                    "success": False,
+                    "error": "conversation_id is required",
+                }
+
+            if not customer_id:
+                return {
+                    "success": False,
+                    "error": "customer_id is required",
+                }
+
+            from heshly_core.services.conversation.conversation_manager import (
+                ConversationManager,
+            )
+
+            manager = ConversationManager(
+                tenant_id=str(tenant_id).strip(),
+                channel="whatsapp",
+            )
+
+            conversation_id = str(conversation_id).strip()
+            customer_id = str(customer_id).strip()
+
+            existing = manager.get(conversation_id)
+
+            if existing is not None:
+                result = existing.to_dict() if hasattr(existing, "to_dict") else existing
+                return {
+                    "success": True,
+                    "created": False,
+                    "tenant_id": str(tenant_id).strip(),
+                    "conversation": result,
+                    **(result if isinstance(result, dict) else {}),
+                }
+
+            conversation = manager.create(
+                conversation_id=conversation_id,
+                customer_id=customer_id,
+            )
+
+            result = (
+                conversation.to_dict()
+                if hasattr(conversation, "to_dict")
+                else conversation
+            )
+
+            return {
+                "success": True,
+                "created": True,
+                "tenant_id": str(tenant_id).strip(),
+                "conversation": result,
+                **(result if isinstance(result, dict) else {}),
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+            }
 
     def set_status(self, payload: Any = None, **kwargs: Any) -> dict:
         try:
@@ -419,6 +598,16 @@ def get(conversation_id=None, phone_number=None, phone_number_id=None, tenant_id
 
 
 @frappe.whitelist(allow_guest=True)
+def create(*args: Any, **kwargs: Any) -> dict:
+    payload = args[0] if args else None
+    if payload is None and "payload" in kwargs:
+        payload = kwargs.pop("payload")
+    if payload is None and "data" in kwargs and isinstance(kwargs["data"], (dict, str)):
+        payload = kwargs.get("data")
+    return _api.create(payload, **kwargs)
+
+
+@frappe.whitelist(allow_guest=True)
 def set_status(**kwargs):
     payload = kwargs.pop("payload", None) if "payload" in kwargs else None
     if payload is None and len(kwargs) == 1 and isinstance(list(kwargs.values())[0], dict):
@@ -476,8 +665,252 @@ def health(*args: Any, **kwargs: Any) -> dict[str, Any]:
     return _api.health(*args, **kwargs)
 
 
+def _require_business():
+    """Return active Business Account for session user (tenant-owner path)."""
+    if not frappe.session.user or frappe.session.user == "Guest":
+        frappe.throw("Authentication required.", frappe.PermissionError)
+    business_id = frappe.session.data.get("heshly_business_id")
+    if not business_id:
+        frappe.throw("Business session not found.", frappe.PermissionError)
+    biz = frappe.db.get_value("Business Account", {"business_id": business_id, "status": "Active"}, ["business_id", "tenant_id"], as_dict=True)
+    if not biz:
+        frappe.throw("Business account not found.", frappe.DoesNotExistError)
+    m = frappe.db.get_value("User Business Membership", {"user": frappe.session.user, "business_id": biz.business_id, "tenant_id": biz.tenant_id, "active": 1}, "name")
+    if not m:
+        frappe.throw("You do not have access to this business.", frappe.PermissionError)
+    return biz
+
+
+@frappe.whitelist()
+def take_over(conversation_id: str):
+    """Owner takes over — status -> handover, creates attention resolved future via activity."""
+    biz = _require_business()
+    tenant_id = biz.tenant_id
+    if not conversation_id:
+        frappe.throw("conversation_id is required")
+    from heshly_core.repositories.conversation_repository import ConversationRepository
+    from heshly_core.models.conversation import ConversationStatus
+    repo = ConversationRepository()
+    conv = repo.get(conversation_id.strip(), tenant_id=tenant_id)
+    if not conv:
+        frappe.throw("Conversation not found", frappe.DoesNotExistError)
+    conv.status = ConversationStatus.HANDOVER
+    repo.save(conv, tenant_id=tenant_id, channel="web")
+    return {"success": True, "conversation_id": conversation_id.strip(), "status": "handover"}
+
+
+@frappe.whitelist()
+def resolve_conversation(conversation_id: str):
+    biz = _require_business()
+    tenant_id = biz.tenant_id
+    if not conversation_id:
+        frappe.throw("conversation_id is required")
+    from heshly_core.repositories.conversation_repository import ConversationRepository
+    from heshly_core.models.conversation import ConversationStatus
+    repo = ConversationRepository()
+    conv = repo.get(conversation_id.strip(), tenant_id=tenant_id)
+    if not conv:
+        frappe.throw("Conversation not found", frappe.DoesNotExistError)
+    conv.status = ConversationStatus.CLOSED
+    repo.save(conv, tenant_id=tenant_id, channel="web")
+    return {"success": True, "conversation_id": conversation_id.strip(), "status": "closed"}
+
+
+@frappe.whitelist()
+def return_to_ai(conversation_id: str):
+    biz = _require_business()
+    tenant_id = biz.tenant_id
+    if not conversation_id:
+        frappe.throw("conversation_id is required")
+    from heshly_core.repositories.conversation_repository import ConversationRepository
+    from heshly_core.models.conversation import ConversationStatus
+    repo = ConversationRepository()
+    conv = repo.get(conversation_id.strip(), tenant_id=tenant_id)
+    if not conv:
+        frappe.throw("Conversation not found", frappe.DoesNotExistError)
+    conv.status = ConversationStatus.ACTIVE
+    repo.save(conv, tenant_id=tenant_id, channel="web")
+    return {"success": True, "conversation_id": conversation_id.strip(), "status": "active"}
+
+
+@frappe.whitelist()
+def get_detail(conversation_id: str):
+    """Enriched detail for Needs Attention / Lead Brief / Timeline — reuses Lead/Appointment + simulator-derived outcome."""
+    biz = _require_business()
+    tenant_id = biz.tenant_id
+    if not conversation_id:
+        frappe.throw("conversation_id is required")
+    from heshly_core.repositories.conversation_repository import ConversationRepository
+    repo = ConversationRepository()
+    conv = repo.get(conversation_id.strip(), tenant_id=tenant_id)
+    if not conv:
+        frappe.throw("Conversation not found", frappe.DoesNotExistError)
+    # Lead via customer_id / phone
+    lead_doc = None
+    try:
+        from heshly_core.repositories.lead_repository import LeadRepository
+        lr = LeadRepository()
+        # search by tenant + lead name or mobile
+        candidates = [conv.customer_id, conv.entities.phone, conv.entities.customer_name]
+        for cand in candidates:
+            if cand:
+                row = frappe.db.get_value("Lead", {"custom_heshly_tenant_id": tenant_id, "mobile_no": cand}, ["name", "lead_name", "mobile_no", "email_id", "status", "territory"], as_dict=True)
+                if row:
+                    lead_doc = row
+                    break
+                row2 = frappe.db.get_value("Lead", {"custom_heshly_tenant_id": tenant_id, "lead_name": cand}, ["name", "lead_name", "mobile_no", "email_id", "status", "territory"], as_dict=True)
+                if row2:
+                    lead_doc = row2
+                    break
+    except Exception:
+        pass
+    # appointment linked by customer / conversation date
+    appointment = None
+    try:
+        appt_rows = frappe.db.sql("SELECT name, scheduled_time, status, customer_name, customer_phone_number FROM `tabAppointment` WHERE custom_heshly_tenant_id=%s AND (customer_phone_number=%s OR customer_name=%s) ORDER BY scheduled_time DESC LIMIT 1", (tenant_id, conv.entities.phone or conv.customer_id, conv.entities.customer_name or ""), as_dict=True)
+        if appt_rows:
+            appointment = appt_rows[0]
+    except Exception:
+        pass
+    # Re-derive outcome using same engines (DecisionEngine single-pass for intent/qualification availability) for display consistency
+    intent_val = None
+    qualification = None
+    availability = None
+    booking = None
+    try:
+        from heshly_core.services.ai.intent_classifier import IntentClassifier
+        from heshly_core.services.ai.entity_extractor import EntityExtractor
+        from heshly_core.services.qualification.qualification_engine import QualificationEngine
+        from heshly_core.api.availability import AvailabilityAPI
+        msg_last = conv.turns[-1].message if conv.turns else ""
+        ic = IntentClassifier()
+        ee = EntityExtractor()
+        qe = QualificationEngine()
+        intent_res = ic.classify(msg_last) if msg_last else None
+        intent_val = intent_res.intent.value if intent_res else conv.entities.service
+        # qualification
+        collected = {"customer_name": conv.entities.customer_name, "phone": conv.entities.phone, "email": conv.entities.email, "service": conv.entities.service, "date": conv.entities.date, "time": conv.entities.time}
+        qr, qa, qresp = qe.qualify(customer_id=conv.customer_id, message=msg_last or "", collected_data=collected, required_fields=["customer_name", "phone"])
+        qualification = {"status": qr.status.value, "score": qr.score, "urgency": qr.urgency.value, "missing_fields": qr.missing_fields}
+        # availability if bookable
+        if conv.entities.service and conv.entities.date and conv.entities.time:
+            try:
+                avail = AvailabilityAPI().check({"service": conv.entities.service, "preferred_date": conv.entities.date, "preferred_time": conv.entities.time, "tenant_id": tenant_id})
+                availability = avail
+            except Exception as e:
+                availability = {"available": False, "reason": str(e)[:200]}
+    except Exception:
+        pass
+    # attention reason
+    attention_reason = None
+    if conv.status.value == "handover":
+        attention_reason = "Human escalation"
+    elif conv.status.value in ("active",) and qualification and qualification["status"] == "collecting_info":
+        attention_reason = "Needs qualification info"
+    elif availability and not availability.get("available"):
+        attention_reason = availability.get("reason") or "Booking attention"
+    # timeline
+    timeline = []
+    now = frappe.utils.now_datetime() if hasattr(frappe.utils, "now_datetime") else None
+    for idx, t in enumerate(conv.turns or []):
+        timeline.append({"at": t.timestamp.isoformat() if hasattr(t.timestamp, "isoformat") else str(t.timestamp), "label": ("Customer" if t.role.value == "user" else "AI") + ": " + t.message[:120], "role": t.role.value})
+    if intent_val:
+        timeline.append({"at": conv.updated_at.isoformat() if hasattr(conv.updated_at, "isoformat") else "", "label": f"Intent: {intent_val}"})
+    if qualification:
+        timeline.append({"at": conv.updated_at.isoformat() if hasattr(conv.updated_at, "isoformat") else "", "label": f"Qualification: {qualification['status']} score {qualification['score']}"})
+    if availability:
+        timeline.append({"at": conv.updated_at.isoformat() if hasattr(conv.updated_at, "isoformat") else "", "label": f"Availability: {'available' if availability.get('available') else 'unavailable'} — {availability.get('reason','')[:100]}"})
+    # outcome
+    qual_label = qualification["status"] if qualification else "—"
+    if qualification and qualification["status"] == "qualified":
+        qual_label = "HOT" if qualification["score"] >= 70 else "WARM"
+    appt_str = None
+    if appointment:
+        appt_str = str(appointment.get("scheduled_time"))
+    elif conv.entities.date and conv.entities.time:
+        appt_str = f"{conv.entities.date} {conv.entities.time}"
+    outcome = {"customer": conv.entities.customer_name or conv.customer_id, "service": conv.entities.service or "—", "date": conv.entities.date or "—", "time": conv.entities.time or "—", "phone": conv.entities.phone or "—", "qualification": qual_label, "appointment": appt_str, "status": conv.status.value, "attention_reason": attention_reason}
+    return {"conversation": conv.to_dict(), "lead": lead_doc, "appointment": appointment, "qualification": qualification, "availability": availability, "timeline": timeline, "outcome": outcome, "attention_reason": attention_reason}
+
+
 def __getattr__(name: str):
     # Fallback for any stale-related method name to prevent 417 "has no attribute"
     if "stale" in name.lower():
         return get_stale_conversations
     raise AttributeError(f"module 'heshly_core.api.conversations' has no attribute '{name}'")
+
+@frappe.whitelist(allow_guest=True, methods=["POST", "GET"])
+def append_turn(*args: Any, **kwargs: Any) -> dict:
+    """Append a conversation turn (user or assistant) deterministically. Handles n8n wrapping."""
+    data = _unwrap_payload(args[0] if args else None, kwargs)
+    tenant_id = _extract_tenant_id(data) or data.get("tenant_id")
+    if not tenant_id or not str(tenant_id).strip():
+        return {"success": False, "reason": "tenant_id is required - no fallback to heshly"}
+    tenant_id = str(tenant_id).strip()
+    conversation_id = data.get("conversation_id") or data.get("conversationId") or data.get("id")
+    role = (data.get("role") or "user").strip().lower()
+    message = data.get("message") or data.get("text") or data.get("body") or ""
+    if isinstance(message, dict):
+        message = message.get("text") or message.get("body") or str(message)
+    message = str(message).strip()
+    if not conversation_id:
+        return {"success": False, "reason": "conversation_id required"}
+    if not message:
+        return {"success": True, "skipped": True, "reason": "empty message"}
+    try:
+        from heshly_core.services.tenant.tenant_context import TenantContext
+        try:
+            TenantContext().set(tenant_id)
+        except Exception:
+            pass
+        from heshly_core.services.conversation.conversation_store import ConversationStore
+        from heshly_core.models.conversation import ConversationTurn, Speaker
+        store = ConversationStore(tenant_id=tenant_id)
+        conv = store.get(conversation_id)
+        if not conv:
+            return {"success": False, "reason": f"Conversation not found: {conversation_id}"}
+        speaker = Speaker.USER if role == "user" else Speaker.ASSISTANT if role == "assistant" else Speaker.from_value(role)
+        turn = ConversationTurn(role=speaker, message=message)
+        if role == "user":
+            # Also persist entities if provided
+            conv.add_turn(turn)
+        else:
+            conv.add_turn(turn)
+        store.save(conv)
+        # Persist qualification to Lead on assistant turns (qualification derived from conversation entities)
+        if role == "assistant":
+            try:
+                from heshly_core.services.qualification.qualification_engine import QualificationEngine
+                from heshly_core.services.crm.lead_persistence import persist_qualification_to_lead
+                qe = QualificationEngine()
+                collected = {
+                    "customer_name": conv.entities.customer_name,
+                    "phone": conv.entities.phone,
+                    "email": conv.entities.email,
+                    "service": conv.entities.service,
+                    "date": conv.entities.date,
+                    "time": conv.entities.time,
+                }
+                qr, _aq, _qr = qe.qualify(
+                    customer_id=conv.customer_id,
+                    message=message,
+                    collected_data=collected,
+                    required_fields=["customer_name", "phone"],
+                )
+                persist_qualification_to_lead(
+                    tenant_id=tenant_id,
+                    customer_name=conv.entities.customer_name,
+                    phone=conv.entities.phone,
+                    email=conv.entities.email,
+                    qual_result=qr,
+                    source="whatsapp",
+                )
+            except Exception as _qe:
+                try:
+                    frappe.logger().warning(f"append_turn lead persistence failed: {_qe}")
+                except Exception:
+                    pass
+        return {"success": True, "conversation_id": conversation_id, "role": role, "message": message}
+    except Exception as e:
+        return {"success": False, "reason": str(e)}
+

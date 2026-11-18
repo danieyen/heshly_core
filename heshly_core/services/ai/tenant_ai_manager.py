@@ -4,7 +4,11 @@ from heshly_core.models.ai_profile import AIProfile
 from heshly_core.models.business_knowledge_profile import (
     BusinessKnowledgeProfile,
 )
+from heshly_core.models.knowledge import KnowledgeContext
 from heshly_core.models.system_prompt import SystemPrompt
+from heshly_core.repositories.business_configuration_repository import (
+    BusinessConfigurationRepository,
+)
 
 from heshly_core.services.ai.ai_personality_manager import (
     AIPersonalityManager,
@@ -37,10 +41,9 @@ class TenantAIManager:
 
         self._profiles: dict[str, AIProfile] = {}
 
-        self._knowledge: dict[
-            str,
-            BusinessKnowledgeProfile,
-        ] = {}
+        self.configuration_repository = (
+            BusinessConfigurationRepository()
+        )
 
     # =====================================================
     # AI Profile
@@ -75,20 +78,32 @@ class TenantAIManager:
         knowledge: BusinessKnowledgeProfile,
     ):
 
-        self._knowledge[
-            knowledge.tenant_id
-        ] = knowledge
-
-        return knowledge
+        return self.configuration_repository.save_knowledge(
+            knowledge
+        )
 
     def knowledge(
         self,
         tenant_id: str,
     ) -> BusinessKnowledgeProfile | None:
 
-        return self._knowledge.get(
+        return self.configuration_repository.get_knowledge(
             tenant_id
         )
+
+    def knowledge_context(
+        self,
+        tenant_id: str,
+    ) -> KnowledgeContext | None:
+
+        knowledge = self.knowledge(
+            tenant_id
+        )
+
+        if knowledge is None:
+            return None
+
+        return knowledge.knowledge_context()
 
     # =====================================================
     # System Prompt

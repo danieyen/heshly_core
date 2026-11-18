@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from heshly_core.services.tenant.tenant_context import (
-    TenantContextManager,
+    TenantContext,
 )
 
 
@@ -25,7 +25,7 @@ class TenantSecurityValidator:
 
     def __init__(self):
 
-        self.context = TenantContextManager()
+        self.context = TenantContext()
 
     # =====================================================
     # Context Validation
@@ -56,7 +56,7 @@ class TenantSecurityValidator:
 
             ==
 
-            tenant.tenant_id
+            tenant
 
         )
 
@@ -79,7 +79,7 @@ class TenantSecurityValidator:
 
             ==
 
-            tenant.tenant_id
+            tenant
 
         )
 

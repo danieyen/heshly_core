@@ -53,3 +53,20 @@ jspm_packages/
 
 # Aider AI Chat
 .aider*
+
+# Heshly preservation: exclude local backups, debug scripts, private certs content
+backups/
+*.bak
+*.bak_*
+*.backup_*
+_*.py
+_*.md
+live_*.json
+repro_*.py
+run_all*.py
+run_prod.py
+check_web.py
+debug_all.py
+heshly_core/tests.backup_*/
+heshly_core/heshly_core/
+deployment/ssl/*.pem

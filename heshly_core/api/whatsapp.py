@@ -101,10 +101,68 @@ class WhatsAppAPI:
     def webhook(self, payload: Any, headers: dict | None = None, tenant_resolver=None) -> dict:
         """
         Process incoming WhatsApp webhook.
-        Normalizes Meta payload, resolves tenant, checks duplicates.
+        Normalizes Meta payload, resolves tenant, validates signature, checks duplicates.
         Returns {success: bool, event_type, message, metadata} with boolean.
         """
         data = _extract_payload(payload)
+        # Enforce X-Hub-Signature-256 only when present; prefer Number's secret, fallback to Configuration
+        try:
+            # headers may be passed explicitly or via frappe.request.headers
+            _headers = headers or {}
+            if not _headers and hasattr(frappe, "request") and hasattr(frappe.request, "headers"):
+                _headers = dict(getattr(frappe.request, "headers", {}) or {})
+                # Werkzeug headers are case-insensitive, normalize lower
+                _headers = {k.lower(): v for k, v in _headers.items()}
+            _sig = _headers.get("x-hub-signature-256") or _headers.get("x-hub-signature") or ""
+            if not _sig and isinstance(headers, dict):
+                _sig = headers.get("X-Hub-Signature-256") or headers.get("x-hub-signature-256") or ""
+            if _sig:
+                _pnid = None
+                if "entry" in data and isinstance(data["entry"], list) and data["entry"]:
+                    ch = data["entry"][0].get("changes", [{}])[0].get("value", {}) if isinstance(data["entry"][0], dict) else {}
+                    _pnid = ch.get("metadata", {}).get("phone_number_id") or ch.get("phone_number_id")
+                _pnid = _pnid or data.get("phone_number_id") or data.get("phoneNumberId")
+                if _pnid:
+                    _cfg = None
+                    try:
+                        # Try Number first (has waba/app_secret via linked Configuration)
+                        _num = frappe.db.get_value("Heshly WhatsApp Number", {"phone_number_id": str(_pnid).strip(), "active": 1}, ["configuration_id", "phone_number_id"], as_dict=True)
+                        if _num and _num.configuration_id:
+                            _cfg = frappe.db.get_value("Heshly WhatsApp Configuration", {"configuration_id": _num.configuration_id}, ["app_secret"], as_dict=True)
+                            if _cfg:
+                                _cfg = WhatsAppConfigurationRepository().get_by_phone_number_id(str(_pnid).strip())
+                    except Exception:
+                        _cfg = None
+                    if not _cfg:
+                        try:
+                            _cfg = WhatsAppConfigurationRepository().get_by_phone_number_id(str(_pnid).strip())
+                        except Exception:
+                            _cfg = None
+                    if _cfg:
+                        _app_secret = getattr(_cfg, "app_secret", None)
+                        # app_secret stored as Password — get via repository may already decrypt; if empty skip verification
+                        try:
+                            if not _app_secret and hasattr(_cfg, "configuration_id"):
+                                # try raw get_password
+                                _raw = frappe.db.get_value("Heshly WhatsApp Configuration", {"configuration_id": _cfg.configuration_id}, "app_secret")
+                                _app_secret = _raw
+                        except Exception:
+                            pass
+                        if _app_secret:
+                            raw_body = getattr(getattr(frappe, "request", None), "data", None)
+                            if isinstance(raw_body, str):
+                                raw_body = raw_body.encode("utf-8")
+                            if not raw_body:
+                                import json as _json
+                                raw_body = _json.dumps(payload, separators=(",", ":")).encode("utf-8")
+                            try:
+                                ok = self.auth.verify_signature(_cfg, raw_body, _sig)
+                            except ValueError:
+                                ok = False
+                            if not ok:
+                                return {"success": False, "event_type": WebhookEventType.UNKNOWN.value, "message": "Invalid webhook signature", "metadata": {}}
+        except Exception:
+            pass
 
         try:
             if "entry" in data:
@@ -187,22 +245,56 @@ class WhatsAppAPI:
 
     def send_message(self, payload: Any) -> dict:
         """
-        Send WhatsApp message. Handles n8n wrapping.
-        Returns {success: bool, message_id, status} with boolean success.
+        Send a WhatsApp message through the real Meta Cloud API.
+
+        Resolves the active WhatsApp configuration by phone_number_id
+        and delegates the actual send to WhatsAppManager.
         """
         data = _extract_payload(payload)
-        # Also handle case where payload is wrapped in data/business
+
+        # Handle additional n8n wrappers.
         if not data.get("phone_number") and not data.get("phoneNumber") and not data.get("to"):
-            # try nested
             for wrapper in ("data", "body", "json"):
                 if wrapper in data and isinstance(data[wrapper], dict):
                     inner = data[wrapper]
-                    if any(k in inner for k in ("phone_number", "phoneNumber", "to", "recipient")):
+                    if any(
+                        k in inner
+                        for k in (
+                            "phone_number",
+                            "phoneNumber",
+                            "to",
+                            "recipient",
+                        )
+                    ):
                         data = inner
                         break
-        phone_number = data.get("phone_number") or data.get("phoneNumber") or data.get("to") or data.get("recipient") or data.get("phone")
-        text = data.get("text") or data.get("message") or data.get("body") or data.get("response")
-        phone_number_id = data.get("phone_number_id") or data.get("phoneNumberId") or data.get("phone_numberId")
+
+        phone_number = (
+            data.get("phone_number")
+            or data.get("phoneNumber")
+            or data.get("to")
+            or data.get("recipient")
+            or data.get("phone")
+        )
+
+        text = (
+            data.get("text")
+            or data.get("message")
+            or data.get("body")
+            or data.get("response")
+        )
+
+        phone_number_id = (
+            data.get("phone_number_id")
+            or data.get("phoneNumberId")
+            or data.get("phone_numberId")
+        )
+
+        conversation_id = (
+            data.get("conversation_id")
+            or data.get("conversationId")
+            or ""
+        )
 
         if not phone_number:
             return {
@@ -211,6 +303,7 @@ class WhatsAppAPI:
                 "status": "failed",
                 "message": "phone_number is required",
             }
+
         if not text:
             return {
                 "success": False,
@@ -219,16 +312,104 @@ class WhatsAppAPI:
                 "message": "text is required",
             }
 
-        import uuid
+        if not phone_number_id:
+            return {
+                "success": False,
+                "message_id": None,
+                "status": "failed",
+                "message": "phone_number_id is required",
+            }
+
+        # Resolve the real tenant-specific WhatsApp configuration.
+        repository = WhatsAppConfigurationRepository()
+
+        configuration = repository.get_by_phone_number_id(
+            str(phone_number_id)
+        )
+
+        if not configuration:
+            return {
+                "success": False,
+                "message_id": None,
+                "status": "failed",
+                "message": (
+                    f"No active WhatsApp configuration found for "
+                    f"phone_number_id {phone_number_id}"
+                ),
+            }
+
+        # Heshly conversation IDs are application-level identifiers,
+        # not Frappe DocType names. Use the canonical tenant:phone
+        # format when n8n does not provide an explicit conversation ID.
+        if not conversation_id:
+            conversation_id = (
+                f"{configuration.tenant_id}:{str(phone_number).strip()}"
+            )
+
+        # Build the domain WhatsApp message.
+        from heshly_core.models.whatsapp import (
+            WhatsAppContact,
+            WhatsAppDirection,
+            WhatsAppMessage,
+            WhatsAppMessageType,
+        )
+
+        message = WhatsAppMessage(
+            message_id="",
+            conversation_id=str(conversation_id),
+            contact=WhatsAppContact(
+                phone_number=str(phone_number),
+            ),
+            direction=WhatsAppDirection.OUTBOUND,
+            message_type=WhatsAppMessageType.TEXT,
+            text=str(text),
+        )
+
+        # Import here to avoid unnecessary module initialization during
+        # webhook/API imports.
+        from heshly_core.services.whatsapp.whatsapp_manager import (
+            WhatsAppManager,
+        )
+
+        manager = WhatsAppManager()
+
+        result = manager.send_message(
+            configuration,
+            message,
+        )
+
+        # Convert CloudAPISuccess / CloudAPIError into the simple
+        # boolean response contract expected by n8n.
+        from heshly_core.services.whatsapp.api.api_models import (
+            CloudAPISuccess,
+        )
+
+        if isinstance(result, CloudAPISuccess):
+            return {
+                "success": True,
+                "message_id": result.message_id,
+                "status": "sent",
+                "message": "WhatsApp message sent successfully",
+                "tenant_id": configuration.tenant_id,
+                "phone_number_id": configuration.phone_number_id,
+            }
+
         return {
-            "success": True,
-            "message_id": str(uuid.uuid4()),
-            "status": "sent",
-            "message": "Message sent",
-            "metadata": {
-                "phone_number": str(phone_number),
-                "phone_number_id": str(phone_number_id) if phone_number_id else None,
-            },
+            "success": False,
+            "message_id": None,
+            "status": "failed",
+            "message": getattr(
+                result,
+                "message",
+                "WhatsApp Cloud API request failed",
+            ),
+            "error": getattr(
+                result,
+                "message",
+                "WhatsApp Cloud API request failed",
+            ),
+            "tenant_id": configuration.tenant_id,
+            "phone_number_id": configuration.phone_number_id,
         }
 
     def build_headers(self, configuration: Any) -> dict:
@@ -245,8 +426,21 @@ class WhatsAppAPI:
 
 
 @frappe.whitelist(allow_guest=True)
+def webhook(**kwargs):
+    api = WhatsAppAPI()
+    
+    if frappe.request and frappe.request.method == "GET":
+        result = api.verify_webhook(kwargs)
+        if result.get("success") and result.get("challenge") is not None:
+            return result["challenge"]
+        frappe.throw(result.get("message", "Wehook verification failed"), frappe.ValidationError)
+    return api.webhook(kwargs, tenant_resolver=resolve_tenant)
+
+
+@frappe.whitelist(allow_guest=True)
 def resolve_tenant(phone_number_id=None):
-    # Tolerant to n8n wrapping: body/json/data and JSON strings, query param or JSON body
+    # Canonical chain: phone_number_id → Heshly WhatsApp Number → Business Account → tenant_id
+    # Falls back to Heshly WhatsApp Configuration for back-compat. Tolerant to n8n wrapping.
     # Do not use frappe.session.user, User Business Membership, or business_id from n8n
     # Do not default tenant_id to "heshly" - return whatever is stored (heshly is valid)
     # Never return secrets
@@ -304,16 +498,34 @@ def resolve_tenant(phone_number_id=None):
     if not phone_number_id or not str(phone_number_id).strip():
         return {"success": False, "message": "phone_number_id is required"}
     phone_number_id = str(phone_number_id).strip()
+    # 1. Try canonical Number persistent table (phone_number_id unique) → Business Account → tenant_id
+    try:
+        num = frappe.db.get_value(
+            "Heshly WhatsApp Number",
+            {"phone_number_id": phone_number_id, "active": 1},
+            ["tenant_id", "business_id", "phone_number_id"],
+            as_dict=True,
+        )
+        if num and num.tenant_id and str(num.tenant_id).strip():
+            # Validate Business Account still Active and matches
+            biz = frappe.db.get_value(
+                "Business Account",
+                {"business_id": num.business_id, "status": "Active"},
+                ["tenant_id"],
+                as_dict=True,
+            )
+            if biz and str(biz.tenant_id).strip() == str(num.tenant_id).strip():
+                return {"success": True, "tenant_id": str(num.tenant_id).strip(), "phone_number_id": str(num.phone_number_id).strip() or phone_number_id, "business_id": num.business_id}
+    except Exception:
+        pass
+    # 2. Fallback to Configuration (back-compat, transient during migration)
     try:
         config = WhatsAppConfigurationRepository().get_by_phone_number_id(phone_number_id)
-    except Exception as e:
+    except Exception:
         return {"success": False, "message": f"No active WhatsApp configuration found for phone_number_id: {phone_number_id}", "phone_number_id": phone_number_id}
     if not config:
         return {"success": False, "message": f"No active WhatsApp configuration found for phone_number_id: {phone_number_id}", "phone_number_id": phone_number_id}
-    # Do not reject tenant_id="heshly" - it is valid production data
-    # Only ensure tenant_id exists and is non-empty
     tenant_id = getattr(config, "tenant_id", None)
-    # Fallback to dict access if config is dict-like
     if tenant_id is None and isinstance(config, dict):
         tenant_id = config.get("tenant_id")
     if tenant_id is not None:
@@ -325,3 +537,11 @@ def resolve_tenant(phone_number_id=None):
         phone_out = config.get("phone_number_id")
     phone_out = str(phone_out).strip() if phone_out else phone_number_id
     return {"success": True, "tenant_id": tenant_id, "phone_number_id": phone_out}
+
+@frappe.whitelist(allow_guest=True)
+def send_message(**kwargs):
+    """
+    Frappe API wrapper for sending a real WhatsApp message.
+    """
+    api = WhatsAppAPI()
+    return api.send_message(kwargs)

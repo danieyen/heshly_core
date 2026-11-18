@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from heshly_core.models.crm import Lead, LeadStatus
 
+from heshly_core.repositories.repository_factory import (
+    repository_factory,
+)
+
 from heshly_core.services.crm.lead_creator import (
     LeadCreator,
 )
@@ -10,8 +14,8 @@ from heshly_core.services.crm.lead_assignment_manager import (
     LeadAssignmentManager,
 )
 
-from heshly_core.services.crm.lead_qualification_manager import (
-    LeadQualificationManager,
+from heshly_core.services.qualification.qualification_engine import (
+    QualificationEngine,
 )
 
 from heshly_core.services.crm.lead_scoring_engine import (
@@ -32,16 +36,24 @@ class LeadManager:
     Main CRM Lead facade.
     """
 
-    def __init__(self):
+    def __init__(self, repository=None):
 
-        self.creator = LeadCreator()
+        self.repository = (
+            repository
+            if repository is not None
+            else repository_factory.leads
+        )
+
+        self.creator = LeadCreator(
+            repository=self.repository
+        )
 
         self.assignment_manager = (
             LeadAssignmentManager()
         )
 
-        self.qualification_manager = (
-            LeadQualificationManager()
+        self.qualification_engine = (
+            QualificationEngine()
         )
 
         self.scoring_engine = (
@@ -104,11 +116,45 @@ class LeadManager:
     def qualify_lead(
         self,
         lead: Lead,
+        message: str = "",
+        collected_data: dict[str, object] | None = None,
+        required_fields: list[str] | None = None,
     ):
 
-        return self.qualification_manager.qualify(
-            lead
+        collected_data = (
+            collected_data
+            if collected_data is not None
+            else {
+                "customer_name": lead.full_name,
+                "phone": lead.phone,
+                "email": lead.email,
+                "company": lead.company,
+            }
         )
+
+        required_fields = (
+            required_fields
+            if required_fields is not None
+            else ["customer_name", "phone"]
+        )
+
+        result, action, response = (
+            self.qualification_engine.qualify(
+                customer_id=lead.lead_id,
+                message=message,
+                collected_data=collected_data,
+                required_fields=required_fields,
+            )
+        )
+
+        lead.score = int(result.score)
+
+        if result.status.value == "qualified":
+            lead.status = LeadStatus.QUALIFIED
+        elif result.status.value == "not_qualified":
+            lead.status = LeadStatus.UNQUALIFIED
+
+        return result, action, response
 
 
     # -----------------------------------------

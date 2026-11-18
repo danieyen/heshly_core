@@ -5,6 +5,10 @@ from heshly_core.models.crm import (
     PipelineStage,
 )
 
+from heshly_core.repositories.repository_factory import (
+    repository_factory,
+)
+
 from heshly_core.services.crm.pipeline_definition_manager import (
     PipelineDefinitionManager,
 )
@@ -37,14 +41,24 @@ class PipelineManager:
     """
 
 
-    def __init__(self):
+    def __init__(self, repository=None):
+
+        self.repository = (
+            repository
+            if repository is not None
+            else repository_factory.pipelines
+        )
 
         self.pipeline_creator = (
-            PipelineDefinitionManager()
+            PipelineDefinitionManager(
+                repository=self.repository
+            )
         )
 
         self.stage_manager = (
-            StageManager()
+            StageManager(
+                repository=self.repository
+            )
         )
 
         self.transition_manager = (
@@ -103,11 +117,13 @@ class PipelineManager:
         stage: PipelineStage,
     ):
 
-        return self.stage_manager.create_stage(
-            pipeline_id=stage.pipeline_id,
-            name=stage.name,
-            order=stage.order,
-            probability=stage.probability,
+        from heshly_core.services.crm.pipeline_stage_manager import (
+            PipelineStageManager,
+        )
+
+        return PipelineStageManager().move_to_stage(
+            opportunity=opportunity,
+            stage=stage,
         )
 
 

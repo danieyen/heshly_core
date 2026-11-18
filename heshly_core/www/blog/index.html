@@ -1,0 +1,51 @@
+{% extends "templates/web.html" %}
+{% block title %}Heshly Blog{% endblock %}
+{% block head_include %}
+<meta name="description" content="{{ meta_description }}">
+<link rel="canonical" href="{{ canonical_url }}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{ canonical_url }}">
+<meta property="og:title" content="{{ meta_title }}">
+<meta property="og:description" content="{{ meta_description }}">
+{% endblock %}
+{% block page_content %}
+<div style="max-width:1280px;margin:0 auto;padding:24px;">
+  <h1 style="font-size:36px;font-weight:800;letter-spacing:-0.02em;">Heshly Blog</h1>
+  <p style="color:#666;max-width:60ch;">Insights on AI receptionists, customer conversations, and booking automation.</p>
+
+  {% if categories %}
+  <nav style="margin:20px 0;display:flex;gap:8px;flex-wrap:wrap;">
+    <a href="/blog" style="padding:8px 14px;border-radius:999px;border:1px solid #ddd;text-decoration:none;background:{% if not current_category %}#000;color:#fff{% else %}#fff{% endif %};">All</a>
+    {% for c in categories %}
+    <a href="/blog?category={{ c.name }}" style="padding:8px 14px;border-radius:999px;border:1px solid #ddd;text-decoration:none;background:{% if current_category==c.name %}#000;color:#fff{% else %}#fff{% endif %};">{{ c.category_name }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
+  {% if posts and posts|length %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px;margin-top:20px;">
+    {% for p in posts %}
+    <a href="/blog/{{ p.slug }}" style="display:block;border:1px solid #eee;border-radius:16px;overflow:hidden;text-decoration:none;color:inherit;background:#fff;">
+      {% if p.featured_image %}<img src="{{ p.featured_image }}" alt="{{ p.title }}" style="width:100%;height:180px;object-fit:cover;display:block;">{% endif %}
+      <div style="padding:16px;">
+        <div style="font-size:12px;color:#888;text-transform:uppercase;letter-spacing:0.08em;">{{ p.category or '' }} · {{ p.reading_time or 1 }} min read</div>
+        <h3 style="margin:8px 0 6px;font-size:18px;font-weight:700;line-height:1.25;">{{ p.title }}</h3>
+        {% if p.excerpt %}<p style="color:#666;font-size:14px;line-height:1.5;margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{{ p.excerpt }}</p>{% endif %}
+        <div style="margin-top:10px;font-size:12px;color:#888;">{{ p.published_on or '' }}</div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+
+  {% if total_pages > 1 %}
+  <nav style="margin:28px 0;display:flex;gap:8px;justify-content:center;">
+    {% if page > 1 %}<a href="/blog?page={{ page-1 }}{% if current_category %}&category={{ current_category }}{% endif %}" style="padding:8px 14px;border:1px solid #ddd;border-radius:999px;text-decoration:none;">← Previous</a>{% endif %}
+    <span style="padding:8px 14px;color:#666;">Page {{ page }} of {{ total_pages }} ({{ total }} posts)</span>
+    {% if page < total_pages %}<a href="/blog?page={{ page+1 }}{% if current_category %}&category={{ current_category }}{% endif %}" style="padding:8px 14px;border:1px solid #ddd;border-radius:999px;text-decoration:none;">Next →</a>{% endif %}
+  </nav>
+  {% endif %}
+  {% else %}
+  <p style="color:#888;margin-top:20px;">No posts yet. Check back soon.</p>
+  {% endif %}
+</div>
+{% endblock %}

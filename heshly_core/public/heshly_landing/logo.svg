@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="220" viewBox="0 0 720 220" role="img" aria-label="Heshly">
+<defs>
+  <linearGradient id="gold2" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#E8D5A8"/>
+    <stop offset="30%" stop-color="#C9A96A"/>
+    <stop offset="65%" stop-color="#D4B47E"/>
+    <stop offset="100%" stop-color="#8C6A2E"/>
+  </linearGradient>
+</defs>
+<!-- Mark -->
+<g transform="translate(0,10)">
+  <rect x="0" y="0" width="200" height="200" rx="28" fill="#000000"/>
+  <!-- H left -->
+  <path d="M54 42 H90 L84 48 V152 L90 158 H54 L60 152 V48 Z" fill="url(#gold2)"/>
+  <!-- H right -->
+  <path d="M110 42 H146 L140 48 V152 L146 158 H110 L116 152 V48 Z" fill="url(#gold2)"/>
+  <!-- Crossbar — stepped official mark -->
+  <path d="M84 88 H110 V96 H140 V112 H110 V104 H84 Z" fill="url(#gold2)"/>
+</g>
+<!-- Wordmark -->
+<text x="240" y="125" font-family="Inter, ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="96" font-weight="750" letter-spacing="18" fill="#C9A96A">HESHLY</text>
+</svg>

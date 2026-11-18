@@ -20,6 +20,8 @@ class StaffInfo:
 @dataclass(slots=True)
 class BusinessProfile:
     business_name: str
+    industry: str = ""
+    description: str = ""
     timezone: str = "Africa/Nairobi"
     currency: str = "KES"
 
@@ -40,6 +42,7 @@ class BusinessPolicy:
 class KnowledgeContext:
     business: BusinessProfile | None = None
     services: list[ServiceInfo] = field(default_factory=list)
+    products: list[str] = field(default_factory=list)
     staff: list[StaffInfo] = field(default_factory=list)
     faqs: list[FAQItem] = field(default_factory=list)
     policies: list[BusinessPolicy] = field(default_factory=list)

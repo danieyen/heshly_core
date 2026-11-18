@@ -1,0 +1,336 @@
+from __future__ import annotations
+
+import frappe
+
+from heshly_core.services.tenant.tenant_context import (
+    TenantContext,
+)
+
+
+class FrappeCustomDomainRepository:
+    """
+    Tenant-aware persistence for Custom Domain.
+
+    TenantContext is the security boundary.
+
+    A Custom Domain may only be read or modified when its
+    tenant_id matches the active TenantContext.
+    """
+
+    DOCTYPE = "Custom Domain"
+
+    def __init__(self):
+        self.context = TenantContext()
+
+    # =====================================================
+    # Tenant
+    # =====================================================
+
+    def current_tenant(self) -> str:
+        tenant_id = self.context.get()
+
+        if not tenant_id:
+            raise PermissionError(
+                "Active tenant context is required."
+            )
+
+        return tenant_id
+
+    def _validate_domain(
+        self,
+        domain: str,
+    ) -> str:
+
+        domain = domain.strip().lower().rstrip(".")
+
+        if not domain:
+            raise ValueError(
+                "Domain is required."
+            )
+
+        return domain
+
+    # =====================================================
+    # Save
+    # =====================================================
+
+    def save(
+        self,
+        domain: str,
+        business_id: str,
+        tenant_id: str,
+        verification_token: str,
+        verification_method: str = "TXT",
+    ):
+
+        current_tenant = self.current_tenant()
+
+        if tenant_id != current_tenant:
+            raise PermissionError(
+                "Custom domain belongs to a different tenant."
+            )
+
+        domain = self._validate_domain(domain)
+
+        business = frappe.db.get_value(
+            "Business Account",
+            {
+                "business_id": business_id,
+            },
+            [
+                "name",
+                "tenant_id",
+                "status",
+            ],
+            as_dict=True,
+        )
+
+        if not business:
+            raise ValueError(
+                f"Business Account {business_id} does not exist."
+            )
+
+        if business.tenant_id != current_tenant:
+            raise PermissionError(
+                "Business Account belongs to a different tenant."
+            )
+
+        if business.status != "Active":
+            raise PermissionError(
+                "Business Account is not active."
+            )
+
+        existing_name = frappe.db.get_value(
+            self.DOCTYPE,
+            {
+                "domain": domain,
+                "tenant_id": current_tenant,
+            },
+            "name",
+        )
+
+        if existing_name:
+            doc = frappe.get_doc(
+                self.DOCTYPE,
+                existing_name,
+            )
+        else:
+            # Domain is globally unique.
+            existing_domain = frappe.db.exists(
+                self.DOCTYPE,
+                domain,
+            )
+
+            if existing_domain:
+                raise PermissionError(
+                    "Domain already belongs to another tenant."
+                )
+
+            doc = frappe.new_doc(
+                self.DOCTYPE
+            )
+
+            doc.domain = domain
+
+        doc.business_id = business_id
+        doc.tenant_id = current_tenant
+        doc.verification_token = verification_token
+        doc.verification_method = verification_method
+        doc.status = "Pending"
+        doc.verified = 0
+        doc.verified_at = None
+        doc.ssl_enabled = 0
+        doc.ssl_provider = None
+        doc.active = 1
+
+        doc.save(
+            ignore_permissions=True
+        )
+
+        frappe.db.commit()
+
+        return doc
+
+    # =====================================================
+    # Get
+    # =====================================================
+
+    def get(
+        self,
+        domain: str,
+    ):
+
+        tenant_id = self.current_tenant()
+        domain = self._validate_domain(domain)
+
+        name = frappe.db.get_value(
+            self.DOCTYPE,
+            {
+                "domain": domain,
+                "tenant_id": tenant_id,
+            },
+            "name",
+        )
+
+        if not name:
+            return None
+
+        return frappe.get_doc(
+            self.DOCTYPE,
+            name,
+        )
+
+    # =====================================================
+    # Get by Business
+    # =====================================================
+
+    def get_by_business(
+        self,
+        business_id: str,
+    ):
+
+        tenant_id = self.current_tenant()
+
+        return frappe.get_all(
+            self.DOCTYPE,
+            filters={
+                "business_id": business_id,
+                "tenant_id": tenant_id,
+            },
+            fields=[
+                "name",
+                "domain",
+                "business_id",
+                "tenant_id",
+                "verification_token",
+                "verification_method",
+                "status",
+                "verified",
+                "verified_at",
+                "ssl_enabled",
+                "ssl_provider",
+                "active",
+            ],
+            order_by="creation desc",
+        )
+
+    # =====================================================
+    # Verify
+    # =====================================================
+
+    def verify(
+        self,
+        domain: str,
+    ):
+
+        doc = self.get(domain)
+
+        if not doc:
+            raise frappe.DoesNotExistError(
+                f"Custom Domain '{domain}' not found "
+                f"for current tenant."
+            )
+
+        doc.verified = 1
+        doc.status = "Verified"
+        doc.verified_at = frappe.utils.now_datetime()
+
+        doc.save(
+            ignore_permissions=True
+        )
+
+        frappe.db.commit()
+
+        return doc
+
+    # =====================================================
+    # Mark Verification Failed
+    # =====================================================
+
+    def mark_verification_failed(
+        self,
+        domain: str,
+    ):
+
+        doc = self.get(domain)
+
+        if not doc:
+            raise frappe.DoesNotExistError(
+                f"Custom Domain '{domain}' not found "
+                f"for current tenant."
+            )
+
+        doc.verified = 0
+        doc.status = "Failed"
+
+        doc.save(
+            ignore_permissions=True
+        )
+
+        frappe.db.commit()
+
+        return doc
+
+    # =====================================================
+    # Enable SSL
+    # =====================================================
+
+    def enable_ssl(
+        self,
+        domain: str,
+        provider: str = "Let's Encrypt",
+    ):
+
+        doc = self.get(domain)
+
+        if not doc:
+            raise frappe.DoesNotExistError(
+                f"Custom Domain '{domain}' not found "
+                f"for current tenant."
+            )
+
+        if not doc.verified:
+            raise PermissionError(
+                "Custom domain must be verified "
+                "before SSL can be enabled."
+            )
+
+        doc.ssl_enabled = 1
+        doc.ssl_provider = provider
+        doc.status = "Active"
+
+        doc.save(
+            ignore_permissions=True
+        )
+
+        frappe.db.commit()
+
+        return doc
+
+    # =====================================================
+    # Disable
+    # =====================================================
+
+    def disable(
+        self,
+        domain: str,
+    ):
+
+        doc = self.get(domain)
+
+        if not doc:
+            raise frappe.DoesNotExistError(
+                f"Custom Domain '{domain}' not found "
+                f"for current tenant."
+            )
+
+        doc.active = 0
+        doc.status = "Disabled"
+
+        doc.save(
+            ignore_permissions=True
+        )
+
+        frappe.db.commit()
+
+        return doc

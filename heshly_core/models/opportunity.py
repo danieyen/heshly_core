@@ -57,6 +57,8 @@ class OpportunityActivity:
 
     opportunity_id: str
 
+    tenant_id: str
+
     activity_type: OpportunityActivityType
 
     description: str

@@ -1,0 +1,234 @@
+"""Isolated matching/routing engine — reads existing tenant data, no new source of truth."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from heshly_core.models.network import CandidateScore
+
+DEFAULT_WEIGHTS = {
+    "service_match": 40,
+    "location": 20,
+    "availability": 15,
+    "reliability": 10,
+    "price": 10,
+    "recency_penalty": 5,
+}
+
+
+def _service_score(requested: str | None, services_text: str | None) -> tuple[float, str]:
+    if not requested:
+        return 0.5, "no service requested"
+    if not services_text:
+        return 0.2, "business has no services listed"
+    r = requested.lower().strip()
+    s = services_text.lower()
+    if r in s:
+        return 1.0, f"service '{requested}' matched"
+    # partial token match
+    tokens = [t for t in r.split() if len(t) > 2]
+    hits = sum(1 for t in tokens if t in s)
+    if hits:
+        return 0.6 + 0.2 * (hits / max(len(tokens), 1)), f"partial match {hits}/{len(tokens)}"
+    return 0.1, "service not matched"
+
+
+def _is_eligible_location(requested_loc: str | None, biz_location: str | None, service_area: str | None) -> bool:
+    """Geographic eligibility: True if location constraint satisfied or no constraint."""
+    if not requested_loc:
+        return True  # Rule F: no location → no restriction
+    rl = requested_loc.strip().lower()
+    if not rl:
+        return True
+    for loc in [service_area, biz_location]:
+        if loc and rl in loc.lower().strip().lower():
+            return True
+        if loc and loc.lower().strip().lower() in rl:
+            return True
+    return False
+
+
+def _location_score(requested_loc: str | None, biz_location: str | None, service_area: str | None) -> tuple[float, str]:
+    if not requested_loc:
+        return 0.7, "no location requested"
+    if not biz_location and not service_area:
+        return 0.4, "business location unknown"
+    rl = requested_loc.lower()
+    for loc in [biz_location, service_area]:
+        if loc and rl in loc.lower():
+            return 1.0, f"location '{requested_loc}' matched"
+        if loc and loc.lower() in rl:
+            return 1.0, "location overlap"
+    return 0.2, "location not matched"
+
+
+def _availability_score(is_active: bool, hours_enabled: bool | None, accepts: bool) -> tuple[float, str]:
+    if not is_active:
+        return 0.0, "business inactive"
+    if not accepts:
+        return 0.0, "not accepting network leads"
+    if hours_enabled is False:
+        return 0.3, "outside business hours"
+    return 1.0, "available"
+
+
+def filter_eligible_candidates(
+    conversation: Any,
+    memberships: list[Any],
+    business_map: dict[str, Any] | None = None,
+) -> list[Any]:
+    """Rule A-D: if customer specifies location, only geographically eligible businesses are candidates."""
+    def _g(obj: Any, key: str, default=None):
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return getattr(obj, key, default)
+    req_location = _g(conversation, "location")
+    if not req_location or not str(req_location).strip():
+        return list(memberships)  # Rule F: no restriction
+    business_map = business_map or {}
+    eligible: list[Any] = []
+    for m in memberships:
+        tenant_id = _g(m, "tenant_id") or ""
+        business_id = _g(m, "business_id") or tenant_id
+        biz = business_map.get(tenant_id) or business_map.get(business_id) or {}
+        biz_location = _g(biz, "location")
+        service_area = _g(m, "service_area")
+        if _is_eligible_location(str(req_location), biz_location, service_area):  # type: ignore
+            eligible.append(m)
+    return eligible
+
+
+def rank_candidates(
+    conversation: Any,
+    memberships: list[Any],
+    business_map: dict[str, Any] | None = None,
+    knowledge_map: dict[str, Any] | None = None,
+    hours_map: dict[str, bool | None] | None = None,
+    weights: dict[str, float] | None = None,
+) -> list[CandidateScore]:
+    """
+    Pure ranking — caller supplies memberships + optional enrichment maps.
+    This keeps the engine isolated and testable without Frappe DB coupling.
+    `conversation` may be dict or object with requested_service/location/budget_min/budget_max.
+    NOTE: For geographic eligibility, call filter_eligible_candidates first; rank_candidates
+    still computes location scores but eligibility gate is applied by the caller (dispatch_service).
+    """
+    w = {**DEFAULT_WEIGHTS, **(weights or {})}
+    total_w = w["service_match"] + w["location"] + w["availability"] + w["reliability"] + w["price"]
+
+    def _g(obj: Any, key: str, default=None):
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return getattr(obj, key, default)
+
+    req_service = _g(conversation, "requested_service")
+    req_location = _g(conversation, "location")
+    budget_min = _g(conversation, "budget_min")
+    budget_max = _g(conversation, "budget_max")
+
+    business_map = business_map or {}
+    knowledge_map = knowledge_map or {}
+    hours_map = hours_map or {}
+
+    results: list[CandidateScore] = []
+    for m in memberships:
+        tenant_id = _g(m, "tenant_id") or ""
+        business_id = _g(m, "business_id") or tenant_id
+        accepts = bool(_g(m, "accepts_network_leads", True))
+        status = str(_g(m, "status", "Active"))
+        is_active = status.lower() == "active"
+        reliability = float(_g(m, "reliability_score", 100) or 0)
+        service_area = _g(m, "service_area")
+
+        biz = business_map.get(tenant_id) or business_map.get(business_id) or {}
+        biz_location = _g(biz, "location")
+        biz_status = _g(biz, "status", "Active")
+        if str(biz_status).lower() != "active":
+            is_active = False
+
+        knowledge_text = None
+        km = knowledge_map.get(tenant_id) or knowledge_map.get(business_id)
+        if km is not None:
+            if isinstance(km, dict):
+                knowledge_text = km.get("services") or km.get("services_text")
+            else:
+                knowledge_text = getattr(km, "services", None)
+
+        hours_enabled = hours_map.get(tenant_id)
+        if hours_enabled is None:
+            hours_enabled = hours_map.get(business_id)
+
+        s_svc, r_svc = _service_score(req_service, knowledge_text)
+        s_loc, r_loc = _location_score(req_location, biz_location, service_area)
+        s_avail, r_avail = _availability_score(is_active, hours_enabled, accepts)
+        # reliability normalized 0-1
+        s_rel = max(0.0, min(1.0, reliability / 100.0))
+        r_rel = f"reliability {reliability:.0f}"
+        # price: neutral unless budget provided; check lead_fee within budget
+        s_price = 0.7
+        r_price = "no budget constraint"
+        lead_fee = _g(m, "lead_fee")
+        if budget_min is not None or budget_max is not None:
+            try:
+                fee = float(lead_fee or 0)
+                if budget_max is not None and fee > float(budget_max):
+                    s_price = 0.2
+                    r_price = f"fee {fee} exceeds budget max {budget_max}"
+                elif budget_min is not None and fee < float(budget_min) * 0.5:
+                    s_price = 0.8
+                    r_price = "fee well within budget"
+            except Exception:
+                pass
+
+        if s_avail == 0.0:
+            score = 0.0
+        else:
+            score = (
+                s_svc * w["service_match"]
+                + s_loc * w["location"]
+                + s_avail * w["availability"]
+                + s_rel * w["reliability"]
+                + s_price * w["price"]
+            ) / total_w
+
+        reasons = {
+            "service": r_svc,
+            "location": r_loc,
+            "availability": r_avail,
+            "reliability": r_rel,
+            "price": r_price,
+            "weights": w,
+        }
+        results.append(CandidateScore(tenant_id=tenant_id, business_id=business_id, score=round(score, 4), reasons=reasons))
+
+    results.sort(key=lambda c: c.score, reverse=True)
+    return results
+
+
+def enrich_from_frappe(memberships: list[Any]) -> tuple[dict[str, Any], dict[str, Any], dict[str, bool | None]]:
+    """Optional Frappe-enriched maps (best-effort, never raises). Used by service layer."""
+    business_map: dict[str, Any] = {}
+    knowledge_map: dict[str, Any] = {}
+    hours_map: dict[str, bool | None] = {}
+    try:
+        import frappe  # type: ignore
+        for m in memberships:
+            tid = getattr(m, "tenant_id", None) or (m.get("tenant_id") if isinstance(m, dict) else None)
+            if not tid:
+                continue
+            try:
+                biz = frappe.db.get_value("Business Account", {"tenant_id": tid}, ["business_id", "location", "status"], as_dict=True)
+                if biz:
+                    business_map[tid] = biz
+            except Exception:
+                pass
+            try:
+                kp = frappe.db.get_value("Business Knowledge Profile", {"tenant_id": tid}, ["services"], as_dict=True)
+                if kp:
+                    knowledge_map[tid] = kp
+            except Exception:
+                pass
+            hours_map[tid] = None  # hours check is external; keep None to mean unknown/assumed open
+    except Exception:
+        pass
+    return business_map, knowledge_map, hours_map

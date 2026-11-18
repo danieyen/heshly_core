@@ -1,0 +1,220 @@
+from __future__ import annotations
+
+import frappe
+from frappe.auth import LoginManager
+
+
+@frappe.whitelist(allow_guest=True)
+def login_business(
+    business_id: str,
+    password: str,
+):
+    """
+    Authenticate a Heshly business using:
+
+        Business ID + password
+
+    Authentication is independent of hostname.
+    The authenticated Frappe session is the source of truth.
+    """
+
+    business_id = (business_id or "").strip().upper()
+    password = password or ""
+
+    if not business_id:
+        frappe.throw(
+            "Business ID is required.",
+            frappe.ValidationError,
+        )
+
+    if not password:
+        frappe.throw(
+            "Password is required.",
+            frappe.ValidationError,
+        )
+
+    # -------------------------------------------------
+    # Find the business
+    # -------------------------------------------------
+
+    business = frappe.db.get_value(
+        "Business Account",
+        {
+            "business_id": business_id,
+            "status": "Active",
+        },
+        [
+            "name",
+            "business_id",
+            "business_name",
+            "tenant_id",
+            "domain",
+            "status",
+            "industry",
+            "location",
+            "timezone",
+            "currency",
+        ],
+        as_dict=True,
+    )
+
+    if not business:
+        frappe.throw(
+            "Invalid business account.",
+            frappe.AuthenticationError,
+        )
+
+    # -------------------------------------------------
+    # Find active Owner membership
+    # -------------------------------------------------
+
+    membership = frappe.db.get_value(
+        "User Business Membership",
+        {
+            "business_id": business.business_id,
+            "tenant_id": business.tenant_id,
+            "role": "Owner",
+            "active": 1,
+        },
+        [
+            "user",
+            "role",
+        ],
+        as_dict=True,
+    )
+
+    if not membership:
+        frappe.throw(
+            "Business account has no active owner.",
+            frappe.AuthenticationError,
+        )
+
+    user = membership.user
+
+    # -------------------------------------------------
+    # Authenticate with Frappe
+    # -------------------------------------------------
+
+    login_manager = LoginManager()
+
+    login_manager.authenticate(
+        user=user,
+        pwd=password,
+    )
+
+    login_manager.post_login()
+
+    # Keep the selected business with the authenticated
+    # session so get_current_business knows which business
+    # the user logged into.
+    frappe.session.data["heshly_business_id"] = (
+        business.business_id
+    )
+
+    # Persist the selected business in the Frappe session
+    # so it survives subsequent HTTP requests.
+    frappe.local.session_obj.update(force=True)
+
+    return {
+        "authenticated": True,
+        "user": frappe.session.user,
+        "role": membership.role,
+        "business": {
+            "business_id": business.business_id,
+            "business_name": business.business_name,
+            "tenant_id": business.tenant_id,
+            "domain": business.domain,
+            "status": business.status,
+            "industry": business.industry,
+            "location": business.location,
+            "timezone": business.timezone,
+            "currency": business.currency,
+        },
+    }
+
+
+@frappe.whitelist()
+def get_current_business():
+    """
+    Return the business associated with the authenticated
+    Frappe session.
+    """
+
+    if not frappe.session.user or frappe.session.user == "Guest":
+        frappe.throw(
+            "Authentication required.",
+            frappe.PermissionError,
+        )
+
+    business_id = frappe.session.data.get(
+        "heshly_business_id"
+    )
+
+    if not business_id:
+        frappe.throw(
+            "Business session not found.",
+            frappe.PermissionError,
+        )
+
+    business = frappe.db.get_value(
+        "Business Account",
+        {
+            "business_id": business_id,
+            "status": "Active",
+        },
+        [
+            "name",
+            "business_id",
+            "business_name",
+            "tenant_id",
+            "domain",
+            "status",
+            "industry",
+            "location",
+            "timezone",
+            "currency",
+        ],
+        as_dict=True,
+    )
+
+    if not business:
+        frappe.throw(
+            "Business account not found.",
+            frappe.DoesNotExistError,
+        )
+
+    membership = frappe.db.get_value(
+        "User Business Membership",
+        {
+            "user": frappe.session.user,
+            "business_id": business.business_id,
+            "tenant_id": business.tenant_id,
+            "active": 1,
+        },
+        [
+            "role",
+        ],
+        as_dict=True,
+    )
+
+    if not membership:
+        frappe.throw(
+            "You do not have access to this business.",
+            frappe.PermissionError,
+        )
+
+    return {
+        "user": frappe.session.user,
+        "role": membership.role,
+        "business": {
+            "business_id": business.business_id,
+            "business_name": business.business_name,
+            "tenant_id": business.tenant_id,
+            "domain": business.domain,
+            "status": business.status,
+            "industry": business.industry,
+            "location": business.location,
+            "timezone": business.timezone,
+            "currency": business.currency,
+        },
+    }
